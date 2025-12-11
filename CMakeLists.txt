@@ -12,7 +12,9 @@ set(SOURCE_FILES
     src/pome_value.cpp
     src/pome_environment.cpp
     src/pome_interpreter.cpp
-    src/pome_stdlib.cpp # Added
+    src/pome_stdlib.cpp
+    src/pome_gc.cpp
+    src/pome_importer.cpp
 )
 
 # Add the executable FIRST

@@ -16,7 +16,9 @@ namespace Pome
         explicit Parser(Lexer &lexer);
         std::unique_ptr<Program> parseProgram();
 
-        // Operator precedence - moved to public
+        /**
+         * Operator precedence - moved to public
+         */
         enum Precedence
         {
             LOWEST,
@@ -41,7 +43,9 @@ namespace Pome
         bool match(TokenType type);
         void error(const std::string &message);
 
-        // Parsing expressions
+        /**
+         * Parsing expressions
+         */
         std::unique_ptr<Expression> parseExpression();                      // Overload without precedence argument
         std::unique_ptr<Expression> parseExpression(Precedence precedence); // Overload with precedence argument
         std::unique_ptr<Expression> parsePrimaryExpression();
@@ -56,7 +60,9 @@ namespace Pome
 
         Precedence getPrecedence(TokenType type);
 
-        // Parsing statements
+        /**
+         * Parsing statements
+         */
         std::unique_ptr<Statement> parseStatement();
         std::unique_ptr<Statement> parseVarDeclarationStatement();
         std::unique_ptr<Statement> parseAssignmentStatement(std::unique_ptr<Expression> target);

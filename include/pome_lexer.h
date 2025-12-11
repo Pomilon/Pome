@@ -11,7 +11,9 @@ namespace Pome
 
     enum class TokenType
     {
-        // Keywords
+        /**
+         * Keywords
+         */
         FUNCTION,
         IF,
         ELSE,
@@ -28,7 +30,9 @@ namespace Pome
         CLASS,
         THIS, // Added for OOP
 
-        // Operators
+        /**
+         * Operators
+         */
         PLUS,
         MINUS,
         MULTIPLY,
@@ -46,7 +50,9 @@ namespace Pome
         NOT,
         QUESTION, // Added for ternary operator
 
-        // Delimiters
+        /**
+         * Delimiters
+         */
         LPAREN,
         RPAREN,
         LBRACE,
@@ -58,12 +64,16 @@ namespace Pome
         COLON,
         SEMICOLON,
 
-        // Literals
+        /**
+         * Literals
+         */
         IDENTIFIER,
         NUMBER,
         STRING,
 
-        // Special
+        /**
+         * Special
+         */
         END_OF_FILE,
         UNKNOWN
     };
@@ -75,10 +85,14 @@ namespace Pome
         int line;
         int column;
 
-        // Static helper to convert TokenType to string for debugging/error reporting
+        /**
+         * Static helper to convert TokenType to string for debugging/error reporting
+         */
         static std::string toString(TokenType type);
 
-        // Member function to get a detailed string representation of the token
+        /**
+         * Member function to get a detailed string representation of the token
+         */
         std::string debugString() const;
     };
 

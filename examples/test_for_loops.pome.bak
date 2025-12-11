@@ -41,6 +41,7 @@ for (var key in table) {
     print(key);
 }
 // Expected:
+// Table iteration (keys):
 // a
 // b (order may vary)
 

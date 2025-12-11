@@ -1,19 +1,14 @@
-// Exported variable
 export var publicVar = "I am public";
-
-// Private variable
 var privateVar = "I am private";
 
-// Exported function
 export fun greet(name) {
     return "Hello, " + name + "! " + publicVar;
 }
 
-// Private function
-fun internalCalc(x) {
+fun helper(x) {
     return x * 2;
 }
 
-export fun doCalc(x) {
-    return internalCalc(x);
+export fun doCalc(y) {
+    return helper(y);
 }

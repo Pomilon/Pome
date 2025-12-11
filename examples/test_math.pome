@@ -1,0 +1,4 @@
+import math;
+print("PI:", math.pi);
+print("Random:", math.random());
+print("Sin(PI/2):", math.sin(math.pi/2));

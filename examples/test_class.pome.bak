@@ -22,3 +22,5 @@ d.speak(); // Buddy says Bark
 print("Dog name is:", d.name); // Access field
 
 // Test method binding logic?
+// var speakFunc = d.speak;
+// speakFunc(); // Should fail if 'this' is not bound, or work if we don't use 'this', or print nil says nil

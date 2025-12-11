@@ -11,78 +11,98 @@ namespace Pome
     namespace StdLib
     {
 
-        // Helper to register a native function into a map
-        static void registerNative(std::shared_ptr<std::map<PomeValue, PomeValue>> &map,
+        /**
+         * Helper to register a native function into a module
+         */
+        static void registerNative(GarbageCollector &gc, PomeModule *module,
                                    const std::string &name, NativeFn fn)
         {
-            auto funcObj = std::make_shared<NativeFunction>(name, fn);
-            (*map)[PomeValue(name)] = PomeValue(std::shared_ptr<PomeObject>(funcObj));
+            NativeFunction *funcObj = gc.allocate<NativeFunction>(name, fn);
+
+            /**
+             * Create key string
+             */
+            PomeString *keyStr = gc.allocate<PomeString>(name);
+
+            module->exports[PomeValue(keyStr)] = PomeValue(funcObj);
         }
 
-        // --- Math Module ---
+        /**
+         * --- Math Module ---
+         */
 
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createMathExports()
+        PomeModule *createMathModule(GarbageCollector &gc)
         {
-            auto exports = std::make_shared<std::map<PomeValue, PomeValue>>();
+            PomeModule *module = gc.allocate<PomeModule>();
 
-            registerNative(exports, "sin", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "sin", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::sin(args[0].asNumber())); });
 
-            registerNative(exports, "cos", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "cos", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::cos(args[0].asNumber())); });
 
-            registerNative(exports, "sqrt", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "sqrt", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::sqrt(args[0].asNumber())); });
 
-            registerNative(exports, "abs", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "abs", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::abs(args[0].asNumber())); });
 
-            registerNative(exports, "floor", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "floor", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::floor(args[0].asNumber())); });
 
-            registerNative(exports, "ceil", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "ceil", [](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isNumber()) return PomeValue(std::monostate{});
         return PomeValue(std::ceil(args[0].asNumber())); });
 
-            registerNative(exports, "random", [](const std::vector<PomeValue> &args)
-                           {
-        // Returns random between 0.0 and 1.0
-        return PomeValue(static_cast<double>(std::rand()) / RAND_MAX); });
+            registerNative(gc, module, "random", [](const std::vector<PomeValue> &args)
+                           { return PomeValue(static_cast<double>(std::rand()) / RAND_MAX); });
 
-            // Constants
-            (*exports)[PomeValue("pi")] = PomeValue(3.141592653589793);
+            /**
+             * Constants
+             */
+            PomeString *piStr = gc.allocate<PomeString>("pi");
+            module->exports[PomeValue(piStr)] = PomeValue(3.141592653589793);
 
-            return exports;
+            return module;
         }
 
-        // --- IO Module ---
+        /**
+         * --- IO Module ---
+         */
 
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createIOExports()
+        PomeModule *createIOModule(GarbageCollector &gc)
         {
-            auto exports = std::make_shared<std::map<PomeValue, PomeValue>>();
+            PomeModule *module = gc.allocate<PomeModule>();
 
-            registerNative(exports, "readFile", [](const std::vector<PomeValue> &args)
+
+
+            /**
+             * Capturing GC by reference:
+             */
+            registerNative(gc, module, "readFile", [&gc](const std::vector<PomeValue> &args)
                            {
         if (args.empty() || !args[0].isString()) return PomeValue(std::monostate{});
         std::string path = args[0].asString();
         std::ifstream file(path);
-        if (!file.is_open()) return PomeValue(std::monostate{}); // Error or nil
+        if (!file.is_open()) return PomeValue(std::monostate{}); 
         std::stringstream buffer;
         buffer << file.rdbuf();
-        return PomeValue(buffer.str()); });
+        
+        PomeString* s = gc.allocate<PomeString>(buffer.str());
+        return PomeValue(s); });
 
-            registerNative(exports, "writeFile", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "writeFile", [](const std::vector<PomeValue> &args)
                            {
         if (args.size() < 2 || !args[0].isString() || !args[1].isString()) return PomeValue(false);
         std::string path = args[0].asString();
@@ -92,43 +112,52 @@ namespace Pome
         file << content;
         return PomeValue(true); });
 
-            registerNative(exports, "input", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "input", [&gc](const std::vector<PomeValue> &args)
                            {
-        if (!args.empty()) std::cout << args[0].toString(); // Prompt
+        if (!args.empty()) std::cout << args[0].toString(); 
         std::string line;
         if (std::getline(std::cin, line)) {
-            return PomeValue(line);
+            PomeString* s = gc.allocate<PomeString>(line);
+            return PomeValue(s);
         }
         return PomeValue(std::monostate{}); });
 
-            return exports;
+            return module;
         }
 
-        // --- String Module ---
+        /**
+         * --- String Module ---
+         */
 
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createStringExports()
+        PomeModule *createStringModule(GarbageCollector &gc)
         {
-            auto exports = std::make_shared<std::map<PomeValue, PomeValue>>();
+            PomeModule *module = gc.allocate<PomeModule>();
 
-            registerNative(exports, "sub", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "sub", [&gc](const std::vector<PomeValue> &args)
                            {
-        // sub(str, start, [length])
         if (args.empty() || !args[0].isString()) return PomeValue(std::monostate{});
         std::string s = args[0].asString();
         
-        if (args.size() < 2 || !args[1].isNumber()) return PomeValue(s); // Default to whole string? Or nil.
+        if (args.size() < 2 || !args[1].isNumber()) {
+             PomeString* newS = gc.allocate<PomeString>(s);
+             return PomeValue(newS); 
+        }
         
         size_t start = static_cast<size_t>(args[1].asNumber());
-        if (start >= s.length()) return PomeValue("");
+        if (start >= s.length()) {
+             PomeString* empty = gc.allocate<PomeString>("");
+             return PomeValue(empty);
+        }
         
         size_t len = std::string::npos;
         if (args.size() >= 3 && args[2].isNumber()) {
             len = static_cast<size_t>(args[2].asNumber());
         }
         
-        return PomeValue(s.substr(start, len)); });
+        PomeString* sub = gc.allocate<PomeString>(s.substr(start, len));
+        return PomeValue(sub); });
 
-            return exports;
+            return module;
         }
 
     }

@@ -1,0 +1,12 @@
+print("Initial GC count:", gc_count());
+
+// Create garbage
+var i = 0;
+while (i < 1000) {
+    var garbage = {a: 1, b: 2};
+    i = i + 1;
+}
+
+print("GC count before collect:", gc_count());
+gc_collect();
+print("GC count after collect:", gc_count());

@@ -1,0 +1,148 @@
+// Variable declarations and assignments
+var x = 10;
+var y = 20;
+var z;
+
+// Conditional statement
+if (x < y) {
+    z = x + y;
+    print("x is less than y. z =", z); // Output: x is less than y. z = 30
+} else {
+    z = x - y;
+    print("x is not less than y. z =", z);
+}
+
+// Loop statement
+var counter = 0;
+while (counter < 3) { // Changed to 3 for shorter output
+    print("Counter:", counter);
+    counter = counter + 1;
+}
+
+// For loop statement
+print("For loop:");
+for (var i = 0; i < 3; i = i + 1) {
+    print("i:", i);
+}
+
+// Test assignment and identifier lookups
+var test_var = 100;
+test_var = test_var + 50;
+print("Test var:", test_var); // Output: Test var: 150
+
+// Global constant access
+print("PI value is:", PI); // Output: PI value is: 3.14159
+
+// Function definition and call
+fun greet(name, age) {
+    print("Hello, my name is", name, "and I am", age, "years old.");
+    return 123; // Test return value
+}
+
+var my_name = "Pome";
+var my_age = 1;
+var return_val = greet(my_name, my_age); // Call the function
+print("Function returned:", return_val); // Output: Function returned: 123
+
+fun no_return() {
+    print("This function returns nothing explicitly.");
+}
+var no_val = no_return();
+print("No return function returned:", no_val); // Output: No return function returned: nil
+
+// Function with local scope
+fun local_scope_test() {
+    var local_var = 1000;
+    print("Inside function, local_var:", local_var);
+}
+local_scope_test();
+
+// Test new built-in functions
+var my_string = "Hello Pome!";
+print("Length of string:", len(my_string)); // Output: Length of string: 11
+
+var num_string = "42.5";
+var converted_num = tonumber(num_string);
+print("Converted number:", converted_num); // Output: Converted number: 42.5
+
+var invalid_num_string = "abc";
+var invalid_converted_num = tonumber(invalid_num_string);
+print("Invalid converted number:", invalid_converted_num); // Output: Invalid converted number: nil
+
+var non_string_tonumber = tonumber(123); // Should return nil
+print("Non-string tonumber:", non_string_tonumber); // Output: Non-string tonumber: nil
+
+// Test module import and member access
+import my_module;
+
+print("Module variable (using dot operator):", my_module.module_var);
+var module_ret = my_module.module_greet("User");
+print("Module function returned:", module_ret);
+print("Module constant:", my_module.module_constant);
+
+// Attempt to access a non-existent member
+
+// Test Lists
+var myList = [10, 20, 30];
+print("List:", myList); // Output: List: [10, 20, 30]
+print("List length:", len(myList)); // Output: List length: 3
+
+print("Element at index 0:", myList[0]); // Output: Element at index 0: 10
+print("Element at index 2:", myList[2]); // Output: Element at index 2: 30
+print("Element at index 3 (out of bounds):", myList[3]); // Output: Element at index 3 (out of bounds): nil
+
+myList[1] = 99;
+print("List after modification:", myList); // Output: List after modification: [10, 99, 30]
+
+// Nested lists
+var nested = [[1, 2], [3, 4]];
+print("Nested list:", nested); // Output: Nested list: [[1, 2], [3, 4]]
+print("Nested element [1][0]:", nested[1][0]); // Output: Nested element [1][0]: 3
+
+// Test Tables
+var myTable = {
+    name: "PomeLang",
+    "version": 1.0,
+    [1+1]: "two"
+};
+print("Table:", myTable); // Output: Table: {"name": "PomeLang", "version": 1.0, 2: "two"}
+print("Table length:", len(myTable)); // Output: Table length: 3
+
+// Member access
+print("Table name:", myTable.name); // Output: Table name: "PomeLang"
+
+// Index access
+print("Table version:", myTable["version"]); // Output: Table version: 1.0
+print("Table[2]:", myTable[2]); // Output: Table[2]: "two"
+
+// Modification
+myTable.name = "Pome v2";
+myTable["newKey"] = "newValue";
+print("Modified table:", myTable); 
+// Output: Modified table: {"name": "Pome v2", "version": 1.0, 2: "two", "newKey": "newValue"}
+
+// Test For-Each Loop
+print("Looping over List:");
+for (var item in myList) {
+    print("Item:", item);
+}
+
+print("Looping over Table (keys):");
+for (var key in myTable) {
+    // Note: Map iteration order depends on key sorting. 
+    // String keys sort lexicographically, numbers numerically. 
+    // Mixed types sort by type index then value.
+    print("Key:", key, "Value:", myTable[key]);
+}
+
+// Test Module Exports
+import export_module;
+print("Exported publicVar:", export_module.publicVar); // Output: Exported publicVar: "I am public"
+print("Exported function:", export_module.greet("User")); // Output: Hello, User! I am public
+print("Exported wrapper:", export_module.doCalc(10)); // Output: 20
+
+// Test From-Import
+from export_module import publicVar, doCalc;
+print("Imported publicVar:", publicVar); // Output: Imported publicVar: "I am public"
+print("Imported doCalc:", doCalc(21)); // Output: 42
+

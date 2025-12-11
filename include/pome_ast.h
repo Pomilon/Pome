@@ -8,10 +8,14 @@
 namespace Pome
 {
 
-    // Forward declaration of the Visitor interface
+    /**
+     * Forward declaration of the Visitor interface
+     */
     class ASTVisitor;
 
-    // Base class for all AST nodes
+    /**
+     * Base class for all AST nodes
+     */
     class ASTNode
     {
     public:
@@ -20,9 +24,13 @@ namespace Pome
             EXPRESSION,
             STATEMENT,
             PROGRAM,
-            // Specific expressions
+            /**
+             * Specific expressions
+             */
             NUMBER_EXPR,
             STRING_EXPR,
+            BOOLEAN_EXPR,
+            NIL_EXPR,
             IDENTIFIER_EXPR,
             BINARY_EXPR,
             UNARY_EXPR,
@@ -33,7 +41,9 @@ namespace Pome
             INDEX_EXPR,   // New node types for lists and tables
             TERNARY_EXPR, // New node type for ternary operator
             THIS_EXPR,    // New node type for 'this'
-            // Specific statements
+            /**
+             * Specific statements
+             */
             VAR_DECL_STMT,
             ASSIGN_STMT,
             IF_STMT,
@@ -56,7 +66,9 @@ namespace Pome
         int getLine() const { return line_; }
         int getColumn() const { return col_; }
 
-        // Visitor pattern for AST traversal
+        /**
+         * Visitor pattern for AST traversal
+         */
         virtual void accept(ASTVisitor &visitor) = 0;
 
     private:
@@ -65,21 +77,27 @@ namespace Pome
         int col_;
     };
 
-    // Base class for Expression nodes
+    /**
+     * Base class for Expression nodes
+     */
     class Expression : public ASTNode
     {
     public:
         Expression(NodeType type, int line, int col) : ASTNode(type, line, col) {}
     };
 
-    // Base class for Statement nodes
+    /**
+     * Base class for Statement nodes
+     */
     class Statement : public ASTNode
     {
     public:
         Statement(NodeType type, int line, int col) : ASTNode(type, line, col) {}
     };
 
-    // --- Concrete Expression Nodes ---
+    /**
+     * --- Concrete Expression Nodes ---
+     */
 
     class NumberExpr : public Expression
     {
@@ -101,6 +119,24 @@ namespace Pome
 
     private:
         std::string value_;
+    };
+
+    class BooleanExpr : public Expression
+    {
+    public:
+        explicit BooleanExpr(bool value, int line, int col) : Expression(BOOLEAN_EXPR, line, col), value_(value) {}
+        bool getValue() const { return value_; }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        bool value_;
+    };
+
+    class NilExpr : public Expression
+    {
+    public:
+        explicit NilExpr(int line, int col) : Expression(NIL_EXPR, line, col) {}
+        void accept(ASTVisitor &visitor) override;
     };
 
     class IdentifierExpr : public Expression
@@ -234,7 +270,9 @@ namespace Pome
         std::unique_ptr<Expression> elseExpr_;
     };
 
-    // --- Concrete Statement Nodes ---
+    /**
+     * --- Concrete Statement Nodes ---
+     */
 
     class VarDeclStmt : public Statement
     {
@@ -425,7 +463,9 @@ namespace Pome
         std::unique_ptr<Statement> stmt_;
     };
 
-    // The main program node, a list of statements
+    /**
+     * The main program node, a list of statements
+     */
     class Program : public ASTNode
     {
     public:
@@ -438,16 +478,22 @@ namespace Pome
         std::vector<std::unique_ptr<Statement>> statements_;
     };
 
-    // Visitor interface for traversing the AST
+    /**
+     * Visitor interface for traversing the AST
+     */
     class ASTVisitor
     {
     public:
         virtual ~ASTVisitor() = default;
 
-        // Expressions
+        /**
+         * Expressions
+         */
         virtual void visit(NumberExpr &expr) = 0;
         virtual void visit(StringExpr &expr) = 0;
         virtual void visit(IdentifierExpr &expr) = 0;
+        virtual void visit(class BooleanExpr &expr) = 0; // Added
+        virtual void visit(class NilExpr &expr) = 0;     // Added
         virtual void visit(ThisExpr &expr) = 0; // Added
         virtual void visit(BinaryExpr &expr) = 0;
         virtual void visit(UnaryExpr &expr) = 0;
@@ -458,7 +504,9 @@ namespace Pome
         virtual void visit(IndexExpr &expr) = 0;
         virtual void visit(TernaryExpr &expr) = 0;
 
-        // Statements
+        /**
+         * Statements
+         */
         virtual void visit(VarDeclStmt &stmt) = 0;
         virtual void visit(AssignStmt &stmt) = 0;
         virtual void visit(IfStmt &stmt) = 0;
@@ -473,13 +521,16 @@ namespace Pome
         virtual void visit(FromImportStmt &stmt) = 0;
         virtual void visit(ExportStmt &stmt) = 0;
 
-        // Program
+        /**
+         * Program
+         */
         virtual void visit(Program &program) = 0;
     };
 
-    // Implementations for accept methods (defined here to avoid circular dependency with ASTVisitor)
     inline void NumberExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void StringExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void BooleanExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void NilExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void IdentifierExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ThisExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
     inline void BinaryExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }

@@ -1,4 +1,4 @@
-export var magic = 42;
+export var magic = 33;
 
 export fun getMagic() {
     return magic;

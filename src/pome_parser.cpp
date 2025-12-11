@@ -5,7 +5,9 @@
 namespace Pome
 {
 
-    // Helper function to map TokenType to its precedence
+    /**
+     * Helper function to map TokenType to its precedence
+     */
     static std::map<TokenType, Parser::Precedence> precedences = {
         {TokenType::EQ, Parser::EQUALS},
         {TokenType::NE, Parser::EQUALS},
@@ -21,7 +23,9 @@ namespace Pome
         {TokenType::DOT, Parser::MEMBER_ACCESS},      // Added for member access
         {TokenType::LBRACKET, Parser::MEMBER_ACCESS}, // Added for index access (same precedence as dot)
         {TokenType::QUESTION, Parser::TERNARY},       // Added for ternary operator
-        // ASSIGN is not here, as assignment will be handled as a statement or specific expression context
+        /**
+         * ASSIGN is not here, as assignment will be handled as a statement or specific expression context
+         */
         {TokenType::LPAREN, Parser::CALL}, // For function calls
     };
 
@@ -74,7 +78,9 @@ namespace Pome
         return LOWEST;
     }
 
-    // Top-level parsing function
+    /**
+     * Top-level parsing function
+     */
     std::unique_ptr<Program> Parser::parseProgram()
     {
         auto program = std::make_unique<Program>();
@@ -87,17 +93,23 @@ namespace Pome
             }
             else
             {
-                // Skip token if statement parsing failed to avoid infinite loop
-                // In a real interpreter, more sophisticated error recovery is needed
+                /**
+                 * Skip token if statement parsing failed to avoid infinite loop
+                 * In a real interpreter, more sophisticated error recovery is needed
+                 */
                 nextToken();
             }
         }
         return program;
     }
 
-    // --- Expression Parsing ---
+    /**
+     * --- Expression Parsing ---
+     */
 
-    // Overload without precedence argument, calls with LOWEST
+    /**
+     * Overload without precedence argument, calls with LOWEST
+     */
     std::unique_ptr<Expression> Parser::parseExpression()
     {
         return parseExpression(LOWEST);
@@ -178,25 +190,21 @@ namespace Pome
         }
         case TokenType::TRUE:
         {
-            auto boolean = std::make_unique<NumberExpr>(1.0, line, col); // Represent true as 1.0
-
-            return boolean;
+            return std::make_unique<BooleanExpr>(true, line, col);
         }
         case TokenType::FALSE:
         {
-            auto boolean = std::make_unique<NumberExpr>(0.0, line, col); // Represent false as 0.0
-
-            return boolean;
+            return std::make_unique<BooleanExpr>(false, line, col);
         }
         case TokenType::NIL:
         {
-            auto nil_val = std::make_unique<NumberExpr>(0.0, line, col); // Represent nil as 0.0 for now
-
-            return nil_val;
+            return std::make_unique<NilExpr>(line, col);
         }
         case TokenType::LPAREN:
         {
-            // currentToken_ is LPAREN, advance past it
+            /**
+             * currentToken_ is LPAREN, advance past it
+             */
             nextToken();                   // consume '('
             auto expr = parseExpression(); // Calls the overload without precedence, which defaults to LOWEST
             if (!expr)
@@ -224,7 +232,6 @@ namespace Pome
         int line = currentToken_.line;
         int col = currentToken_.column;
         std::vector<std::unique_ptr<Expression>> args;
-        // Assume currentToken_ is LPAREN (already consumed in parseExpression's loop or by explicit nextToken)
 
         if (peekToken_.type != TokenType::RPAREN)
         { // Check if there are arguments
@@ -246,7 +253,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // Check for unary operators
+        /**
+         * Check for unary operators
+         */
         if (currentToken_.type == TokenType::MINUS || currentToken_.type == TokenType::NOT)
         {
             std::string op = currentToken_.value;
@@ -256,7 +265,9 @@ namespace Pome
                 return nullptr;
             return std::make_unique<UnaryExpr>(op, std::move(right), line, col);
         }
-        // If not a prefix operator, parse as a primary expression
+        /**
+         * If not a prefix operator, parse as a primary expression
+         */
         auto primaryExpr = parsePrimaryExpression();
         return primaryExpr;
     }
@@ -281,7 +292,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is DOT. Need to advance past it.
+        /**
+         * currentToken_ is DOT. Need to advance past it.
+         */
         nextToken(); // Consume DOT. currentToken_ is now IDENTIFIER (member name)
 
         if (currentToken_.type != TokenType::IDENTIFIER)
@@ -290,9 +303,13 @@ namespace Pome
             return nullptr;
         }
         std::string memberName = currentToken_.value;
-        // currentToken_ is now the member name.
+        /**
+         * currentToken_ is now the member name.
+         */
 
-        // We don't call nextToken here, as the main parseExpression loop will handle it.
+        /**
+         * We don't call nextToken here, as the main parseExpression loop will handle it.
+         */
         return std::make_unique<MemberAccessExpr>(std::move(object), memberName, line, col);
     }
 
@@ -300,7 +317,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is LBRACKET.
+        /**
+         * currentToken_ is LBRACKET.
+         */
         nextToken(); // Consume LBRACKET. currentToken_ is now start of index expression
 
         auto index = parseExpression();
@@ -317,10 +336,14 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is QUESTION.
+        /**
+         * currentToken_ is QUESTION.
+         */
         nextToken(); // Consume '?'
 
-        // Parse then expression.
+        /**
+         * Parse then expression.
+         */
         auto thenExpr = parseExpression(LOWEST);
         if (!thenExpr)
             return nullptr;
@@ -329,8 +352,10 @@ namespace Pome
             return nullptr; // expect consumes COLON
         nextToken();        // Consume COLON so currentToken_ becomes start of elseExpr
 
-        // Parse else expression.
-        // Use LOWEST to allow right-associativity and assignment in the else branch.
+        /**
+         * Parse else expression.
+         * Use LOWEST to allow right-associativity and assignment in the else branch.
+         */
         auto elseExpr = parseExpression(LOWEST);
         if (!elseExpr)
             return nullptr;
@@ -347,7 +372,9 @@ namespace Pome
 
         if (currentToken_.type != TokenType::RBRACKET)
         {
-            // Parse first element
+            /**
+             * Parse first element
+             */
             auto element = parseExpression();
             if (!element)
                 return nullptr;
@@ -385,7 +412,6 @@ namespace Pome
                 int keyLine = currentToken_.line;
                 int keyCol = currentToken_.column;
 
-                // --- 1. Parse Key (Remove the nextToken calls here) ---
                 if (currentToken_.type == TokenType::IDENTIFIER || currentToken_.type == TokenType::STRING)
                 {
                     key = std::make_unique<StringExpr>(currentToken_.value, keyLine, keyCol);
@@ -408,12 +434,16 @@ namespace Pome
                     return nullptr;
                 }
 
-                // --- 2. Handle Colon ---
+                /**
+                 * --- 2. Handle Colon ---
+                 */
                 if (!expect(TokenType::COLON))
                     return nullptr;
                 nextToken(); // CONSUME COLON (Fix #1)
 
-                // --- 3. Parse Value ---
+                /**
+                 * --- 3. Parse Value ---
+                 */
                 auto value = parseExpression();
                 if (!value)
                     return nullptr;
@@ -425,7 +455,6 @@ namespace Pome
             } while (currentToken_.type == TokenType::COMMA && (nextToken(), true));
         }
 
-        // Manual check because currentToken is already RBRACE (expect checks peekToken)
         if (currentToken_.type != TokenType::RBRACE)
         {
             error("Expected '}' after table entries, got " + currentToken_.debugString());
@@ -436,7 +465,9 @@ namespace Pome
         return std::make_unique<TableExpr>(std::move(entries), line, col);
     }
 
-    // --- Statement Parsing ---
+    /**
+     * --- Statement Parsing ---
+     */
 
     std::unique_ptr<Statement> Parser::parseStatement()
     {
@@ -463,7 +494,9 @@ namespace Pome
         case TokenType::EXPORT: // Handle export statements
             return parseExportStatement();
         default:
-            // Could be an expression statement or an assignment
+            /**
+             * Could be an expression statement or an assignment
+             */
             return parseExpressionStatement();
         }
     }
@@ -472,7 +505,6 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is 'VAR' (consumed by parseStatement switch)
 
         nextToken(); // Consume 'VAR', currentToken_ is now IDENTIFIER (e.g., 'x' or 'z')
 
@@ -491,7 +523,6 @@ namespace Pome
             initializer = parseExpression(); // This will parse '10'. After this, currentToken_ is '10'
             if (!initializer)
                 return nullptr;
-            // else: if no initializer, currentToken_ is already SEMICOLON (';').
         }
 
         if (currentToken_.type != TokenType::SEMICOLON)
@@ -508,8 +539,6 @@ namespace Pome
     {
         int line = target->getLine();
         int col = target->getColumn();
-        // Assumes target (LHS) is already parsed (as expr) and currentToken_ is the target.
-        // peekToken_ is ASSIGN.
 
         nextToken(); // Consume target. currentToken_ is now ASSIGN.
         nextToken(); // Consume ASSIGN. currentToken_ is now start of RHS.
@@ -528,7 +557,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is IF
+        /**
+         * currentToken_ is IF
+         */
         nextToken(); // Consume 'IF', currentToken_ is now LPAREN ('(')
 
         if (currentToken_.type != TokenType::LPAREN)
@@ -583,7 +614,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is WHILE
+        /**
+         * currentToken_ is WHILE
+         */
         nextToken(); // Consume 'WHILE', currentToken_ is now LPAREN ('(')
         if (currentToken_.type != TokenType::LPAREN)
         {
@@ -617,7 +650,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is FOR
+        /**
+         * currentToken_ is FOR
+         */
         nextToken(); // Consume 'FOR', currentToken_ is now LPAREN ('(')
 
         if (currentToken_.type != TokenType::LPAREN)
@@ -629,7 +664,6 @@ namespace Pome
 
         if (currentToken_.type == TokenType::VAR)
         {
-            // Look ahead for "for (var x in y)"
             nextToken(); // Consume VAR. currentToken_ is IDENTIFIER.
             if (currentToken_.type != TokenType::IDENTIFIER)
             {
@@ -641,7 +675,6 @@ namespace Pome
 
             if (currentToken_.type == TokenType::IDENTIFIER && currentToken_.value == "in")
             { // Check for pseudo-keyword 'in'
-                // It's a for-each loop: `for (var x in y) { ... }`
                 nextToken(); // Consume 'in'. currentToken_ is start of iterable expr.
 
                 auto iterable = parseExpression();
@@ -666,7 +699,9 @@ namespace Pome
             }
             else
             {
-                // It's a standard for loop.
+                /**
+                 * It's a standard for loop.
+                 */
                 std::unique_ptr<Expression> initExpr = nullptr;
                 if (currentToken_.type == TokenType::ASSIGN)
                 {
@@ -679,7 +714,9 @@ namespace Pome
                 auto initializer = std::make_unique<VarDeclStmt>(varName, std::move(initExpr), line, col);
                 nextToken(); // Consume SEMICOLON. currentToken_ is now start of condition.
 
-                // Parse condition
+                /**
+                 * Parse condition
+                 */
                 std::unique_ptr<Expression> condition = nullptr;
                 if (currentToken_.type != TokenType::SEMICOLON)
                 {
@@ -689,7 +726,9 @@ namespace Pome
                     return nullptr;
                 nextToken(); // Consume SEMICOLON
 
-                // Parse increment
+                /**
+                 * Parse increment
+                 */
                 std::unique_ptr<Statement> increment = nullptr;
                 if (currentToken_.type != TokenType::RPAREN)
                 {
@@ -732,7 +771,6 @@ namespace Pome
             }
         }
 
-        // Parse initializer (if not VAR)
         std::unique_ptr<Statement> initializer = nullptr;
         if (currentToken_.type == TokenType::SEMICOLON)
         {
@@ -743,7 +781,9 @@ namespace Pome
             initializer = parseExpressionStatement(); // This parses expr and consumes semicolon
         }
 
-        // Parse condition
+        /**
+         * Parse condition
+         */
         std::unique_ptr<Expression> condition = nullptr;
         if (currentToken_.type != TokenType::SEMICOLON)
         {
@@ -753,7 +793,9 @@ namespace Pome
             return nullptr;
         nextToken(); // Consume SEMICOLON
 
-        // Parse increment
+        /**
+         * Parse increment
+         */
         std::unique_ptr<Statement> increment = nullptr;
         if (currentToken_.type != TokenType::RPAREN)
         {
@@ -799,20 +841,26 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is RETURN
+        /**
+         * currentToken_ is RETURN
+         */
         nextToken(); // Consume RETURN
 
         std::unique_ptr<Expression> returnValue = nullptr;
-        if (currentToken_.type != TokenType::SEMICOLON)
+        if (currentToken_.type == TokenType::SEMICOLON)
+        {
+            nextToken(); // Consume SEMICOLON
+        }
+        else
         {
             returnValue = parseExpression();
             if (!returnValue)
                 return nullptr;
-        }
 
-        if (!expect(TokenType::SEMICOLON))
-            return nullptr;
-        nextToken(); // Consume SEMICOLON
+            if (!expect(TokenType::SEMICOLON))
+                return nullptr;
+            nextToken(); // Consume SEMICOLON (which is now in currentToken_)
+        }
         return std::make_unique<ReturnStmt>(std::move(returnValue), line, col);
     }
 
@@ -848,7 +896,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is FUNCTION
+        /**
+         * currentToken_ is FUNCTION
+         */
         nextToken(); // Consume FUNCTION
 
         if (currentToken_.type != TokenType::IDENTIFIER)
@@ -911,7 +961,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is CLASS
+        /**
+         * currentToken_ is CLASS
+         */
         nextToken(); // Consume CLASS. currentToken_ is IDENTIFIER (name)
 
         if (currentToken_.type != TokenType::IDENTIFIER)
@@ -963,16 +1015,32 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is IMPORT
+        /**
+         * currentToken_ is IMPORT
+         */
         nextToken(); // Consume IMPORT
 
+        std::string moduleName;
         if (currentToken_.type != TokenType::IDENTIFIER)
         {
             error("Expected module name after 'import', got " + currentToken_.debugString());
             return nullptr;
         }
-        std::string moduleName = currentToken_.value;
+        moduleName = currentToken_.value;
         nextToken(); // Consume IDENTIFIER
+
+        while (currentToken_.type == TokenType::DOT)
+        {
+            moduleName += ".";
+            nextToken(); // Consume DOT
+            if (currentToken_.type != TokenType::IDENTIFIER)
+            {
+                error("Expected identifier after '.' in module name.");
+                return nullptr;
+            }
+            moduleName += currentToken_.value;
+            nextToken(); // Consume IDENTIFIER
+        }
 
         if (currentToken_.type != TokenType::SEMICOLON)
         {
@@ -988,16 +1056,32 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is FROM
+        /**
+         * currentToken_ is FROM
+         */
         nextToken(); // Consume FROM
 
+        std::string moduleName;
         if (currentToken_.type != TokenType::IDENTIFIER)
         {
             error("Expected module name after 'from', got " + currentToken_.debugString());
             return nullptr;
         }
-        std::string moduleName = currentToken_.value;
+        moduleName = currentToken_.value;
         nextToken(); // Consume module name
+
+        while (currentToken_.type == TokenType::DOT)
+        {
+            moduleName += ".";
+            nextToken(); // Consume DOT
+            if (currentToken_.type != TokenType::IDENTIFIER)
+            {
+                error("Expected identifier after '.' in module name.");
+                return nullptr;
+            }
+            moduleName += currentToken_.value;
+            nextToken(); // Consume IDENTIFIER
+        }
 
         if (currentToken_.type != TokenType::IMPORT)
         {
@@ -1032,7 +1116,9 @@ namespace Pome
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
-        // currentToken_ is EXPORT
+        /**
+         * currentToken_ is EXPORT
+         */
         nextToken(); // Consume EXPORT
 
         std::unique_ptr<Statement> stmt = nullptr;
@@ -1056,7 +1142,6 @@ namespace Pome
     std::vector<std::unique_ptr<Statement>> Parser::parseBlockStatement()
     {
         std::vector<std::unique_ptr<Statement>> statements;
-        // Assumes currentToken_ is the *first statement* token inside the block (LBRACE already consumed)
 
         while (currentToken_.type != TokenType::RBRACE && currentToken_.type != TokenType::END_OF_FILE)
         {
@@ -1067,12 +1152,15 @@ namespace Pome
             }
             else
             {
-                // Skip token if statement parsing failed to avoid infinite loop
-                // In a real interpreter, more sophisticated error recovery is needed
+                /**
+                 * Skip token if statement parsing failed to avoid infinite loop
+                 */
                 nextToken();
             }
         }
-        // currentToken_ is now RBRACE or END_OF_FILE. It's up to the caller to consume RBRACE.
+        /**
+         * currentToken_ is now RBRACE or END_OF_FILE. It's up to the caller to consume RBRACE.
+         */
         return statements;
     }
 

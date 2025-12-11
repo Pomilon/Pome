@@ -3,203 +3,180 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 
 #include "pome_lexer.h"
 #include "pome_parser.h"
 #include "pome_interpreter.h"
 
-int main(int argc, char* argv[]) {
-    std::cout << "Pome Interpreter" << std::endl;
+// --- CONFIGURATION ---
+const std::string POME_VERSION = "0.1.0";
 
-    std::string source;
+// ANSI Color Codes
+const std::string RESET   = "\033[0m";
+const std::string RED     = "\033[31m";
+const std::string BOLD    = "\033[1m";
+const std::string CYAN    = "\033[36m";
+const std::string WHITE   = "\033[37m";
 
-    if (argc > 1) {
-        std::string filename = argv[1];
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            std::cerr << "Error: Could not open file '" << filename << "'" << std::endl;
-            return 1;
-        }
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        source = buffer.str();
-        std::cout << "Executing file: " << filename << std::endl;
-    } else {
-        std::cout << "No file specified. Running internal example..." << std::endl;
-        // Example Pome code
-        source = R"(
-        // Variable declarations and assignments
-        var x = 10;
-        var y = 20;
-        var z;
+// --- SYSTEM INFO HELPERS ---
+std::string getOS() {
+    #ifdef _WIN32
+    return "Windows";
+    #elif __APPLE__
+    return "macOS";
+    #elif __linux__
+    return "Linux";
+    #else
+    return "Unknown OS";
+    #endif
+}
 
-        // Conditional statement
-        if (x < y) {
-            z = x + y;
-            print("x is less than y. z =", z); // Output: x is less than y. z = 30
+std::string getCompiler() {
+    #if defined(__clang__)
+    return "Clang " + std::string(__clang_version__);
+    #elif defined(__GNUC__)
+    return "GCC " + std::to_string(__GNUC__) + "." + std::to_string(__GNUC_MINOR__);
+    #elif defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_VER);
+    #else
+    return "Unknown Compiler";
+    #endif
+}
+
+void printNeofetchStyle() {
+    std::vector<std::string> logo = {
+"                                                ",
+"                         ======                 ",
+"                        ==   ==                 ",
+"                       ==  ==+                  ",
+"                       =====                    ",
+"                ======+ +======+                ",
+"              ==+    =====    ====              ",
+"             +=     +=   ==     ===             ",
+"            ==      ==    ==     ==             ",
+"            +=     === == ==+    ==             ",
+"            ==     ==  ====      ==             ",
+"             ==    ==  ==+=     ===             ",
+"             ==+   ==  + ==     ==              ",
+"              ==   ==          ==               ",
+"               === ==         ==                ",
+"                =====  ========                 ",
+"                                                ",
+    };
+
+    std::vector<std::string> info;
+    info.push_back(RED + BOLD + "USER" + RESET + "@" + RED + "PomeShell" + RESET);
+    info.push_back("-------------");
+    info.push_back(BOLD + "OS" + RESET + ":       " + getOS());
+    info.push_back(BOLD + "Lang" + RESET + ":     Pome v" + POME_VERSION);
+    info.push_back(BOLD + "Host" + RESET + ":     C++ STL / " + getCompiler());
+    info.push_back(BOLD + "Mode" + RESET + ":     Interactive (REPL)");
+    info.push_back(BOLD + "License" + RESET + ":  MIT");
+    info.push_back(""); // Spacer
+    info.push_back(CYAN + "Type 'exit' to quit." + RESET);
+
+    size_t maxLines = std::max(logo.size(), info.size());
+    int logoWidth = 30;
+
+    std::cout << "\n"; // Top margin
+
+    for (size_t i = 0; i < maxLines; ++i) {
+        // Print Logo Segment (Red)
+        if (i < logo.size()) {
+            std::cout << RED << std::left << std::setw(logoWidth) << logo[i] << RESET;
         } else {
-            z = x - y;
-            print("x is not less than y. z =", z);
+            std::cout << std::string(logoWidth, ' ');
         }
 
-        // Loop statement
-        var counter = 0;
-        while (counter < 3) { // Changed to 3 for shorter output
-            print("Counter:", counter);
-            counter = counter + 1;
+        // Print Info Segment (Text)
+        if (i < info.size()) {
+            std::cout << "  " << info[i];
         }
 
-        // For loop statement
-        print("For loop:");
-        for (var i = 0; i < 3; i = i + 1) {
-            print("i:", i);
-        }
-
-        // Test assignment and identifier lookups
-        var test_var = 100;
-        test_var = test_var + 50;
-        print("Test var:", test_var); // Output: Test var: 150
-
-        // Global constant access
-        print("PI value is:", PI); // Output: PI value is: 3.14159
-
-        // Function definition and call
-        fun greet(name, age) {
-            print("Hello, my name is", name, "and I am", age, "years old.");
-            return 123; // Test return value
-        }
-
-        var my_name = "Pome";
-        var my_age = 1;
-        var return_val = greet(my_name, my_age); // Call the function
-        print("Function returned:", return_val); // Output: Function returned: 123
-
-        // Function with no return value (implicit nil)
-        fun no_return() {
-            print("This function returns nothing explicitly.");
-        }
-        var no_val = no_return();
-        print("No return function returned:", no_val); // Output: No return function returned: nil
-
-        // Function with local scope
-        fun local_scope_test() {
-            var local_var = 1000;
-            print("Inside function, local_var:", local_var);
-        }
-        local_scope_test();
-        // print("Outside function, local_var:", local_var); // This would cause an error
-
-        // Test new built-in functions
-        var my_string = "Hello Pome!";
-        print("Length of string:", len(my_string)); // Output: Length of string: 11
-
-        var num_string = "42.5";
-        var converted_num = tonumber(num_string);
-        print("Converted number:", converted_num); // Output: Converted number: 42.5
-
-        var invalid_num_string = "abc";
-        var invalid_converted_num = tonumber(invalid_num_string);
-        print("Invalid converted number:", invalid_converted_num); // Output: Invalid converted number: nil
-
-        var non_string_tonumber = tonumber(123); // Should return nil
-        print("Non-string tonumber:", non_string_tonumber); // Output: Non-string tonumber: nil
-
-        // Test module import and member access
-        import my_module;
-
-        print("Module variable (using dot operator):", my_module.module_var);
-        var module_ret = my_module.module_greet("User");
-        print("Module function returned:", module_ret);
-        print("Module constant:", my_module.module_constant);
-
-        // Attempt to access a non-existent member
-        // print("Non-existent member:", my_module.non_existent); // This should cause a runtime error
-
-        // Test Lists
-        var myList = [10, 20, 30];
-        print("List:", myList); // Output: List: [10, 20, 30]
-        print("List length:", len(myList)); // Output: List length: 3
-
-        print("Element at index 0:", myList[0]); // Output: Element at index 0: 10
-        print("Element at index 2:", myList[2]); // Output: Element at index 2: 30
-        print("Element at index 3 (out of bounds):", myList[3]); // Output: Element at index 3 (out of bounds): nil
-
-        myList[1] = 99;
-        print("List after modification:", myList); // Output: List after modification: [10, 99, 30]
-
-        // Nested lists
-        var nested = [[1, 2], [3, 4]];
-        print("Nested list:", nested); // Output: Nested list: [[1, 2], [3, 4]]
-        print("Nested element [1][0]:", nested[1][0]); // Output: Nested element [1][0]: 3
-
-        // Test Tables
-        var myTable = {
-            name: "PomeLang",
-            "version": 1.0,
-            [1+1]: "two"
-        };
-        print("Table:", myTable); // Output: Table: {"name": "PomeLang", "version": 1.0, 2: "two"}
-        print("Table length:", len(myTable)); // Output: Table length: 3
-
-        // Member access
-        print("Table name:", myTable.name); // Output: Table name: "PomeLang"
-        
-        // Index access
-        print("Table version:", myTable["version"]); // Output: Table version: 1.0
-        print("Table[2]:", myTable[2]); // Output: Table[2]: "two"
-
-        // Modification
-        myTable.name = "Pome v2";
-        myTable["newKey"] = "newValue";
-        print("Modified table:", myTable); 
-        // Output: Modified table: {"name": "Pome v2", "version": 1.0, 2: "two", "newKey": "newValue"}
-
-        // Test For-Each Loop
-        print("Looping over List:");
-        for (var item in myList) {
-            print("Item:", item);
-        }
-
-        print("Looping over Table (keys):");
-        for (var key in myTable) {
-            // Note: Map iteration order depends on key sorting. 
-            // String keys sort lexicographically, numbers numerically. 
-            // Mixed types sort by type index then value.
-            // Number (2) < String ("name") < String ("newKey") ...
-            print("Key:", key, "Value:", myTable[key]);
-        }
-
-        // Test Module Exports
-        import export_module;
-        print("Exported publicVar:", export_module.publicVar); // Output: Exported publicVar: "I am public"
-        print("Exported function:", export_module.greet("User")); // Output: Hello, User! I am public
-        print("Exported wrapper:", export_module.doCalc(10)); // Output: 20
-
-        // Test From-Import
-        from export_module import publicVar, doCalc;
-        print("Imported publicVar:", publicVar); // Output: Imported publicVar: "I am public"
-        print("Imported doCalc:", doCalc(21)); // Output: 42
-
-        // Verify private members are hidden (manual verification: accessing export_module.privateVar should fail or be nil)
-        // print("Private var:", export_module.privateVar); // Should be nil or error depending on implementation
-    )";
+        std::cout << "\n";
     }
+    std::cout << "\n"; // Bottom margin
+}
 
-    Pome::Lexer lexer(source);
-    Pome::Parser parser(lexer);
-    Pome::Interpreter interpreter;
+// --- CORE EXECUTION LOGIC ---
 
+bool executeSource(const std::string& source, Pome::Interpreter& interpreter) {
     try {
+        Pome::Lexer lexer(source);
+        Pome::Parser parser(lexer);
         std::unique_ptr<Pome::Program> program = parser.parseProgram();
+        
         if (program) {
-            std::cout << "\n--- Interpreting Pome Code ---\n";
             interpreter.interpret(*program);
-            std::cout << "--- Interpretation Finished ---\n";
         }
-    } catch (const std::runtime_error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << RED << "Error: " << RESET << e.what() << std::endl;
+        return false;
+    }
+}
+
+void runPrompt() {
+    printNeofetchStyle(); // Show the cool UI
+
+    Pome::Interpreter interpreter; 
+    std::string line;
+
+    while (true) {
+        std::cout << RED << "pome" << RESET << "> "; // Colored prompt
+        
+        if (!std::getline(std::cin, line)) {
+            std::cout << "\nGoodbye!" << std::endl;
+            break;
+        }
+
+        if (line == "exit") break;
+        if (line.empty()) continue;
+
+        executeSource(line, interpreter);
+    }
+}
+
+int runFile(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Could not open file '" << path << "'." << std::endl;
+        return 74; 
     }
 
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+
+    Pome::Interpreter interpreter;
+    if (!executeSource(source, interpreter)) return 65;
+    return 0;
+}
+
+void printUsage() {
+    std::cout << "Usage: pome [script]" << std::endl;
+    std::cout << "   Or: pome --version" << std::endl;
+}
+
+// --- MAIN ---
+int main(int argc, char* argv[]) {
+    if (argc == 1) {
+        runPrompt();
+    } 
+    else if (argc == 2) {
+        std::string arg = argv[1];
+        if (arg == "--help" || arg == "-h") {
+            printUsage();
+        } else if (arg == "--version" || arg == "-v") {
+            std::cout << "Pome " << POME_VERSION << std::endl;
+        } else {
+            return runFile(arg);
+        }
+    } 
+    else {
+        std::cerr << "Too many arguments." << std::endl;
+        return 64; 
+    }
     return 0;
 }

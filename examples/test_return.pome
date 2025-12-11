@@ -1,0 +1,9 @@
+fun foo() {
+    return;
+}
+print(foo());
+
+fun bar() {
+    return nil;
+}
+print(bar());

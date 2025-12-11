@@ -4,7 +4,9 @@
 namespace Pome
 {
 
-    // Static helper to convert TokenType to string
+    /**
+     * Static helper to convert TokenType to string
+     */
     std::string Token::toString(TokenType type)
     {
         static const std::map<TokenType, std::string> tokenTypeNames = {
@@ -53,7 +55,9 @@ namespace Pome
         return "UNKNOWN";
     }
 
-    // Member function to get a detailed string representation of the token
+    /**
+     * Member function to get a detailed string representation of the token
+     */
     std::string Token::debugString() const
     {
         return "Type: " + Token::toString(type) + ", Value: '" + value + "', Line: " + std::to_string(line) + ", Col: " + std::to_string(column);
@@ -97,18 +101,24 @@ namespace Pome
                 advance();
             }
 
-            // Handle single-line comments: //
+            /**
+             * Handle single-line comments: //
+             */
             if (peek() == '/' && currentPos + 1 < source.length() && source[currentPos + 1] == '/')
             {
                 while (currentPos < source.length() && peek() != '\n' && peek() != '\r')
                 {
                     advance(); // Consume until newline or EOF
                 }
-                // Don't advance past newline here, let the outer loop handle it as whitespace
+                /**
+                 * Don't advance past newline here, let the outer loop handle it as whitespace
+                 */
                 continue; // Go back to check for more whitespace/comments
             }
 
-            // Handle multi-line comments: /* ... */
+            /**
+             * Handle multi-line comments: / * ... * /
+             */
             if (peek() == '/' && currentPos + 1 < source.length() && source[currentPos + 1] == '*')
             {
                 advance(); // Consume '/'
@@ -132,8 +142,9 @@ namespace Pome
                 }
                 if (!commentEnded)
                 {
-                    // Handle error: unterminated multi-line comment. For now, just exit loop.
-                    // In a real lexer, this would throw an error.
+                    /**
+                     * Handle error: unterminated multi-line comment. For now, just exit loop.
+                     */
                     break;
                 }
                 continue; // Go back to check for more whitespace/comments
@@ -152,7 +163,9 @@ namespace Pome
         }
         std::string value = source.substr(start, currentPos - start);
 
-        // Check for keywords
+        /**
+         * Check for keywords
+         */
         static const std::map<std::string, TokenType> keywords = {
             {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"this", TokenType::THIS}, // Added for OOP
             {"and", TokenType::AND},
@@ -191,7 +204,9 @@ namespace Pome
 
     Token Lexer::readString()
     {
-        // Assume opening quote has already been consumed
+        /**
+         * Assume opening quote has already been consumed
+         */
         size_t start = currentPos;
         while (peek() != '"' && peek() != '\0')
         {
@@ -214,9 +229,11 @@ namespace Pome
 
     Token Lexer::makeToken(TokenType type, const std::string &value)
     {
-        // Adjust currentCol for the length of the token value for accurate reporting.
-        // The current currentCol points to the character AFTER the token has been read.
-        // So, we subtract the length of the value to get the start column.
+        /**
+         * Adjust currentCol for the length of the token value for accurate reporting.
+         * The current currentCol points to the character AFTER the token has been read.
+         * So, we subtract the length of the value to get the start column.
+         */
         return {type, value, currentLine, currentCol - static_cast<int>(value.length())};
     }
 
@@ -251,12 +268,16 @@ namespace Pome
             }
             catch (const std::runtime_error &e)
             {
-                // For now, re-throw or return an error token
+                /**
+                 * For now, re-throw or return an error token
+                 */
                 return makeToken(TokenType::UNKNOWN, e.what()); // Or handle more gracefully
             }
         }
 
-        // Handle operators and delimiters
+        /**
+         * Handle operators and delimiters
+         */
         switch (c)
         {
         case '+':
@@ -289,8 +310,10 @@ namespace Pome
                 advance();
                 return makeToken(TokenType::NE, "!=");
             }
-            // If '!' is not followed by '=', it might be a unary NOT.
-            // For now, treat it as unknown, parser will decide its context.
+            /**
+             * If '!' is not followed by '=', it might be a unary NOT.
+             * For now, treat it as unknown, parser will decide its context.
+             */
             return makeToken(TokenType::NOT, "!"); // Changed to NOT for unary operator
         }
         case '<':
@@ -351,8 +374,10 @@ namespace Pome
             advance();
             if (peek() == '/' || peek() == '*')
             {   // This should be handled by skipWhitespace now
-                // This block should ideally not be reached if skipWhitespace is correct
-                // For now, just return DIVIDE, but it implies a problem in comment skipping logic
+                /**
+                 * This block should ideally not be reached if skipWhitespace is correct
+                 * For now, just return DIVIDE, but it implies a problem in comment skipping logic
+                 */
                 return makeToken(TokenType::DIVIDE, "/");
             }
             return makeToken(TokenType::DIVIDE, "/");

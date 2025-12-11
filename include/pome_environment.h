@@ -4,31 +4,47 @@
 #include "pome_value.h"
 #include <map>
 #include <string>
-#include <memory> // For std::shared_ptr
 
 namespace Pome
 {
 
-    class Environment
+    
+    class Environment : public PomeObject
     {
     public:
-        // Constructor for the global environment (no parent)
         Environment();
-        // Constructor for a nested environment
-        explicit Environment(std::shared_ptr<Environment> parent);
+        /**
+         * Constructor for a nested environment
+         */
+        explicit Environment(Environment* parent);
 
-        // Define a new variable in the current scope
+        ObjectType type() const override { return ObjectType::ENVIRONMENT; }
+        std::string toString() const override { return "<environment>"; }
+
+        /**
+         * Define a new variable in the current scope
+         */
         void define(const std::string &name, const PomeValue &value);
 
-        // Get the value of a variable, searching parent scopes if necessary
+        /**
+         * Get the value of a variable, searching parent scopes if necessary
+         */
         PomeValue get(const std::string &name);
 
-        // Assign a new value to an existing variable, searching parent scopes
+        /**
+         * Assign a new value to an existing variable, searching parent scopes
+         */
         void assign(const std::string &name, const PomeValue &value);
+        
+        /**
+         * For GC tracing
+         */
+        Environment* getParent() const { return parent_; }
+        std::map<std::string, PomeValue>& getStore() { return store_; }
 
     private:
         std::map<std::string, PomeValue> store_;
-        std::shared_ptr<Environment> parent_; // Pointer to the enclosing scope
+        Environment* parent_; // Pointer to the enclosing scope
     };
 
 } // namespace Pome

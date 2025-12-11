@@ -4,3 +4,4 @@ print(magic);
 print(getMagic());
 
 // This should fail if uncommented
+// print(secret); 

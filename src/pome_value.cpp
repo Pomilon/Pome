@@ -6,30 +6,34 @@
 namespace Pome
 {
 
-    // --- NativeFunction Implementation ---
+    /**
+     * --- NativeFunction Implementation ---
+     */
     PomeValue NativeFunction::call(const std::vector<PomeValue> &args)
     {
         return function_(args);
     }
 
-    // --- PomeValue Implementation ---
+    /**
+     * --- PomeValue Implementation ---
+     */
 
     PomeValue::PomeValue() : value_(std::monostate{}) {}
     PomeValue::PomeValue(std::monostate) : value_(std::monostate{}) {}
     PomeValue::PomeValue(bool b) : value_(b) {}
     PomeValue::PomeValue(double d) : value_(d) {}
-    PomeValue::PomeValue(std::shared_ptr<PomeObject> obj) : value_(std::move(obj)) {}
-    PomeValue::PomeValue(const std::string &s) : value_(std::make_shared<PomeString>(s)) {}
-    PomeValue::PomeValue(const char *s) : value_(std::make_shared<PomeString>(s)) {}
+    PomeValue::PomeValue(PomeObject* obj) : value_(obj) {}
 
-    // Type checking
+    /**
+     * Type checking
+     */
     bool PomeValue::isNil() const { return std::holds_alternative<std::monostate>(value_); }
     bool PomeValue::isBool() const { return std::holds_alternative<bool>(value_); }
     bool PomeValue::isNumber() const { return std::holds_alternative<double>(value_); }
 
     bool PomeValue::isString() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::STRING;
         }
@@ -38,7 +42,7 @@ namespace Pome
 
     bool PomeValue::isFunction() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::FUNCTION || (*obj)->type() == ObjectType::NATIVE_FUNCTION;
         }
@@ -47,7 +51,7 @@ namespace Pome
 
     bool PomeValue::isPomeFunction() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::FUNCTION;
         }
@@ -56,7 +60,7 @@ namespace Pome
 
     bool PomeValue::isNativeFunction() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::NATIVE_FUNCTION;
         }
@@ -65,7 +69,7 @@ namespace Pome
 
     bool PomeValue::isList() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::LIST;
         }
@@ -74,7 +78,7 @@ namespace Pome
 
     bool PomeValue::isTable() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::TABLE;
         }
@@ -83,7 +87,7 @@ namespace Pome
 
     bool PomeValue::isClass() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::CLASS;
         }
@@ -92,23 +96,34 @@ namespace Pome
 
     bool PomeValue::isInstance() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
             return (*obj)->type() == ObjectType::INSTANCE;
         }
         return false;
     }
 
-    bool PomeValue::isEnvironment() const
+    bool PomeValue::isModule() const
     {
-        if (auto obj = std::get_if<std::shared_ptr<PomeObject>>(&value_))
+        if (auto obj = std::get_if<PomeObject*>(&value_))
         {
-            return (*obj)->type() == ObjectType::MODULE; // We use Module as Environment-like object
+            return (*obj)->type() == ObjectType::MODULE; 
         }
         return false;
     }
 
-    // Getters
+    bool PomeValue::isEnvironment() const
+    {
+        if (auto obj = std::get_if<PomeObject*>(&value_))
+        {
+            return (*obj)->type() == ObjectType::ENVIRONMENT; 
+        }
+        return false;
+    }
+
+    /**
+     * Getters
+     */
     bool PomeValue::asBool() const
     {
         if (isBool())
@@ -127,68 +142,64 @@ namespace Pome
 
     const std::string &PomeValue::asString() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeString>(obj)->getValue();
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeString*>(obj)->getValue();
     }
 
-    std::shared_ptr<PomeFunction> PomeValue::asPomeFunction() const
+    PomeObject* PomeValue::asObject() const 
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeFunction>(obj);
+        if (std::holds_alternative<PomeObject*>(value_))
+            return std::get<PomeObject*>(value_);
+        return nullptr;
     }
 
-    std::shared_ptr<PomeFunction> PomeFunction::bind(std::shared_ptr<PomeInstance> instance)
+    PomeFunction* PomeValue::asPomeFunction() const
     {
-        // 1. Create a new environment using the function's closure as the parent.
-        auto environment = std::make_shared<Environment>(closureEnv);
-
-        // 2. Define "this" in that environment, pointing to the instance.
-        environment->define("this", PomeValue(instance));
-
-        // 3. Create a new function that is exactly the same, but uses this new environment.
-        auto boundMethod = std::make_shared<PomeFunction>();
-        boundMethod->name = name;
-        boundMethod->parameters = parameters;
-        boundMethod->body = body;
-        boundMethod->closureEnv = environment; // The magic fix
-
-        return boundMethod;
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeFunction*>(obj);
     }
 
-    std::shared_ptr<NativeFunction> PomeValue::asNativeFunction() const
+    NativeFunction* PomeValue::asNativeFunction() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<NativeFunction>(obj);
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<NativeFunction*>(obj);
     }
 
-    std::shared_ptr<PomeList> PomeValue::asList() const
+    PomeList* PomeValue::asList() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeList>(obj);
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeList*>(obj);
     }
 
-    std::shared_ptr<PomeTable> PomeValue::asTable() const
+    PomeTable* PomeValue::asTable() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeTable>(obj);
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeTable*>(obj);
     }
 
-    std::shared_ptr<PomeClass> PomeValue::asClass() const
+    PomeClass* PomeValue::asClass() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeClass>(obj);
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeClass*>(obj);
     }
 
-    std::shared_ptr<PomeInstance> PomeValue::asInstance() const
+    PomeInstance* PomeValue::asInstance() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeInstance>(obj);
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeInstance*>(obj);
     }
 
-    std::shared_ptr<PomeModule> PomeValue::asModule() const
+    PomeModule* PomeValue::asModule() const
     {
-        auto obj = std::get<std::shared_ptr<PomeObject>>(value_);
-        return std::static_pointer_cast<PomeModule>(obj);
+        if (!isModule()) return nullptr;
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<PomeModule*>(obj);
+    }
+
+    Environment* PomeValue::asEnvironment() const
+    {
+        auto obj = std::get<PomeObject*>(value_);
+        return static_cast<Environment*>(obj);
     }
 
     std::string PomeValue::toString() const
@@ -211,9 +222,9 @@ namespace Pome
             }
             return ss.str();
         }
-        if (std::holds_alternative<std::shared_ptr<PomeObject>>(value_))
+        if (std::holds_alternative<PomeObject*>(value_))
         {
-            return std::get<std::shared_ptr<PomeObject>>(value_)->toString();
+            return std::get<PomeObject*>(value_)->toString();
         }
         return "unknown";
     }
@@ -229,16 +240,19 @@ namespace Pome
         if (isNumber())
             return std::get<double>(value_) == std::get<double>(other.value_);
 
-        auto obj1 = std::get<std::shared_ptr<PomeObject>>(value_);
-        auto obj2 = std::get<std::shared_ptr<PomeObject>>(other.value_);
+        auto obj1 = std::get<PomeObject*>(value_);
+        auto obj2 = std::get<PomeObject*>(other.value_);
 
         if (obj1 == obj2)
             return true;
+            
+        if (obj1 == nullptr || obj2 == nullptr)
+            return false;
 
         if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
         {
-            return std::static_pointer_cast<PomeString>(obj1)->getValue() ==
-                   std::static_pointer_cast<PomeString>(obj2)->getValue();
+            return static_cast<PomeString*>(obj1)->getValue() ==
+                   static_cast<PomeString*>(obj2)->getValue();
         }
         return false;
     }
@@ -253,27 +267,79 @@ namespace Pome
         if (isNumber())
             return std::get<double>(value_) < std::get<double>(other.value_);
 
-        if (std::holds_alternative<std::shared_ptr<PomeObject>>(value_))
+        if (std::holds_alternative<PomeObject*>(value_))
         {
-            auto obj1 = std::get<std::shared_ptr<PomeObject>>(value_);
-            auto obj2 = std::get<std::shared_ptr<PomeObject>>(other.value_);
+            auto obj1 = std::get<PomeObject*>(value_);
+            auto obj2 = std::get<PomeObject*>(other.value_);
 
-            // Strict ordering by ObjectType first
+            /**
+             * Strict ordering by ObjectType first
+             */
             if (obj1->type() != obj2->type())
             {
                 return obj1->type() < obj2->type();
             }
 
-            // Same type comparison
+            /**
+             * Same type comparison
+             */
             if (obj1->type() == ObjectType::STRING)
             {
-                return std::static_pointer_cast<PomeString>(obj1)->getValue() <
-                       std::static_pointer_cast<PomeString>(obj2)->getValue();
+                return static_cast<PomeString*>(obj1)->getValue() <
+                       static_cast<PomeString*>(obj2)->getValue();
             }
-            // Fallback to pointer comparison for other reference types (functions, lists, etc.)
             return obj1 < obj2;
         }
         return false; // nil == nil
+    }
+
+    /**
+     * Implementation of toString for types that were previously in header or split
+     */
+    std::string PomeList::toString() const
+    {
+        std::string s = "[";
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+            s += elements[i].toString();
+            if (i < elements.size() - 1)
+                s += ", ";
+        }
+        s += "]";
+        return s;
+    }
+
+    std::string PomeTable::toString() const
+    {
+        std::string s = "{";
+        size_t i = 0;
+        for (const auto &pair : elements)
+        {
+            s += pair.first.toString() + ": " + pair.second.toString();
+            if (i < elements.size() - 1)
+                s += ", ";
+            i++;
+        }
+        s += "}";
+        return s;
+    }
+    
+    /**
+     * PomeInstance implementation
+     */
+    PomeValue PomeInstance::get(const std::string &name)
+    {
+        auto it = fields.find(name);
+        if (it != fields.end())
+        {
+            return it->second;
+        }
+        return PomeValue(); // nil
+    }
+
+    void PomeInstance::set(const std::string &name, PomeValue value)
+    {
+        fields[name] = value;
     }
 
 } // namespace

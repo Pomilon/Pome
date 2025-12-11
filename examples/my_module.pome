@@ -1,9 +1,6 @@
-// my_module.pome
-var module_var = 100;
+export var module_var = 42;
+export var module_constant = 3.14;
 
-fun module_greet(name) {
-    print("Hello from module,", name);
-    return "Module says hi!";
+export fun module_greet(name) {
+    return "Hello from module, " + name;
 }
-
-var module_constant = 42;

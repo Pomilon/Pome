@@ -2,23 +2,27 @@
 #define POME_STDLIB_H
 
 #include "pome_value.h"
-#include <map>
-#include <memory>
+#include "pome_gc.h" // Needed for allocation
 
 namespace Pome
 {
     namespace StdLib
     {
 
-        // Creates and returns the exports map for the 'math' module
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createMathExports();
+        /**
+         * Creates and returns the 'math' module
+         */
+        PomeModule* createMathModule(GarbageCollector& gc);
 
-        // Creates and returns the exports map for the 'io' module
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createIOExports();
+        /**
+         * Creates and returns the 'io' module
+         */
+        PomeModule* createIOModule(GarbageCollector& gc);
 
-        // Creates and returns the exports map for the 'string' module
-        // (Can be used as a standalone module or methods on string objects later)
-        std::shared_ptr<std::map<PomeValue, PomeValue>> createStringExports();
+        /**
+         * Creates and returns the 'string' module
+         */
+        PomeModule* createStringModule(GarbageCollector& gc);
 
     }
 }

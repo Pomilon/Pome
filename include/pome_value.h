@@ -12,11 +12,15 @@
 namespace Pome
 {
 
-    // Forward declarations
+    /**
+     * Forward declarations
+     */
     class Environment;
     class Statement;
 
-    // Object types
+    /**
+     * Object types
+     */
     enum class ObjectType
     {
         STRING,
@@ -26,16 +30,26 @@ namespace Pome
         TABLE,
         CLASS,
         INSTANCE,
-        MODULE
+        MODULE,
+        ENVIRONMENT // Added
     };
 
-    // Base Object Class
+    /**
+     * Base Object Class
+     */
     class PomeObject
     {
     public:
         virtual ~PomeObject() = default;
         virtual ObjectType type() const = 0;
         virtual std::string toString() const = 0;
+
+        /**
+         * GC support
+         */
+        bool isMarked = false;
+        size_t gcSize = 0; // Size of the object for GC accounting
+        PomeObject* next = nullptr;
     };
 
     class PomeString;
@@ -47,11 +61,14 @@ namespace Pome
     class PomeInstance;
     class PomeModule;
 
+    /**
+     * Modified to use raw pointer
+     */
     using PomeValueType = std::variant<
         std::monostate,
         bool,
         double,
-        std::shared_ptr<PomeObject>>;
+        PomeObject*>;
 
     class PomeValue
     {
@@ -60,11 +77,11 @@ namespace Pome
         explicit PomeValue(std::monostate);
         explicit PomeValue(bool b);
         explicit PomeValue(double d);
-        explicit PomeValue(std::shared_ptr<PomeObject> obj);
-        explicit PomeValue(const std::string &s); // Helper for string
-        explicit PomeValue(const char *s);        // Helper for C-string
+        explicit PomeValue(PomeObject* obj);
 
-        // Type checking
+        /**
+         * Type checking
+         */
         bool isNil() const;
         bool isBool() const;
         bool isNumber() const;
@@ -76,19 +93,24 @@ namespace Pome
         bool isTable() const;
         bool isClass() const;
         bool isInstance() const;
+        bool isModule() const;
         bool isEnvironment() const;
 
-        // Getters
+        /**
+         * Getters
+         */
         bool asBool() const;
         double asNumber() const;
         const std::string &asString() const;
-        std::shared_ptr<PomeFunction> asPomeFunction() const;
-        std::shared_ptr<NativeFunction> asNativeFunction() const;
-        std::shared_ptr<PomeList> asList() const;
-        std::shared_ptr<PomeTable> asTable() const;
-        std::shared_ptr<PomeClass> asClass() const;
-        std::shared_ptr<PomeInstance> asInstance() const;
-        std::shared_ptr<PomeModule> asModule() const;
+        PomeObject* asObject() const;
+        PomeFunction* asPomeFunction() const;
+        NativeFunction* asNativeFunction() const;
+        PomeList* asList() const;
+        PomeTable* asTable() const;
+        PomeClass* asClass() const;
+        PomeInstance* asInstance() const;
+        PomeModule* asModule() const;
+        Environment* asEnvironment() const; // Added
 
         std::string toString() const;
         bool operator==(const PomeValue &other) const;
@@ -99,7 +121,9 @@ namespace Pome
         PomeValueType value_;
     };
 
-    // String Object
+    /**
+     * String Object
+     */
     class PomeString : public PomeObject
     {
     public:
@@ -112,21 +136,24 @@ namespace Pome
         std::string value_;
     };
 
-    // User-defined Function Object
+    /**
+     * User-defined Function Object
+     */
     class PomeFunction : public PomeObject
     {
     public:
         std::string name;
         std::vector<std::string> parameters;
         const std::vector<std::unique_ptr<Statement>> *body;
-        std::shared_ptr<Environment> closureEnv;
-        std::shared_ptr<PomeFunction> bind(std::shared_ptr<PomeInstance> instance);
+        Environment* closureEnv = nullptr; 
 
         ObjectType type() const override { return ObjectType::FUNCTION; }
         std::string toString() const override { return "<fn " + name + ">"; }
     };
 
-    // Built-in Function Object
+    /**
+     * Built-in Function Object
+     */
     using NativeFn = std::function<PomeValue(const std::vector<PomeValue> &)>;
 
     class NativeFunction : public PomeObject
@@ -146,7 +173,9 @@ namespace Pome
         NativeFn function_;
     };
 
-    // List Object
+    /**
+     * List Object
+     */
     class PomeList : public PomeObject
     {
     public:
@@ -154,21 +183,12 @@ namespace Pome
 
         explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::LIST; }
-        std::string toString() const override
-        {
-            std::string s = "[";
-            for (size_t i = 0; i < elements.size(); ++i)
-            {
-                s += elements[i].toString();
-                if (i < elements.size() - 1)
-                    s += ", ";
-            }
-            s += "]";
-            return s;
-        }
+        std::string toString() const override;
     };
 
-    // Table Object
+    /**
+     * Table Object
+     */
     class PomeTable : public PomeObject
     {
     public:
@@ -176,34 +196,23 @@ namespace Pome
 
         explicit PomeTable(std::map<PomeValue, PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::TABLE; }
-        std::string toString() const override
-        {
-            std::string s = "{";
-            size_t i = 0;
-            for (const auto &pair : elements)
-            {
-                s += pair.first.toString() + ": " + pair.second.toString();
-                if (i < elements.size() - 1)
-                    s += ", ";
-                i++;
-            }
-            s += "}";
-            return s;
-        }
+        std::string toString() const override;
     };
 
-    // Class Definition Object
+    /**
+     * Class Definition Object
+     */
     class PomeClass : public PomeObject
     {
     public:
         std::string name;
-        std::map<std::string, std::shared_ptr<PomeFunction>> methods;
+        std::map<std::string, PomeFunction*> methods;
 
         explicit PomeClass(std::string n) : name(std::move(n)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
         std::string toString() const override { return "<class " + name + ">"; }
 
-        std::shared_ptr<PomeFunction> findMethod(const std::string &name)
+        PomeFunction* findMethod(const std::string &name)
         {
             auto it = methods.find(name);
             if (it != methods.end())
@@ -214,43 +223,32 @@ namespace Pome
         }
     };
 
-    // Class Instance Object
+    /**
+     * Class Instance Object
+     */
     class PomeInstance : public PomeObject
     {
     public:
-        std::shared_ptr<PomeClass> klass;
+        PomeClass* klass;
         std::map<std::string, PomeValue> fields;
 
-        explicit PomeInstance(std::shared_ptr<PomeClass> k) : klass(std::move(k)) {}
+        explicit PomeInstance(PomeClass* k) : klass(k) {}
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
 
-        PomeValue get(const std::string &name)
-        {
-            auto it = fields.find(name);
-            if (it != fields.end())
-            {
-                std::cout << "Getting field " << name << " on " << this << ": " << it->second.toString() << std::endl;
-                return it->second;
-            }
-            std::cout << "Getting field " << name << " on " << this << ": nil (not found)" << std::endl;
-            return PomeValue(); // nil
-        }
-
-        void set(const std::string &name, PomeValue value)
-        {
-            std::cout << "Setting field " << name << " on " << this << " to " << value.toString() << std::endl;
-            fields[name] = value;
-        }
+        PomeValue get(const std::string &name);
+        void set(const std::string &name, PomeValue value);
     };
 
-    // Module Object (Wraps Environment)
+    /**
+     * Module Object
+     */
     class PomeModule : public PomeObject
     {
     public:
-        std::shared_ptr<std::map<PomeValue, PomeValue>> exports;
+        std::map<PomeValue, PomeValue> exports;
 
-        explicit PomeModule(std::shared_ptr<std::map<PomeValue, PomeValue>> exportsMap) : exports(std::move(exportsMap)) {}
+        explicit PomeModule() {}
         ObjectType type() const override { return ObjectType::MODULE; }
         std::string toString() const override { return "<module>"; }
     };

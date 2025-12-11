@@ -5,6 +5,8 @@ var b = 20;
 var max = a > b ? a : b;
 print("Max of", a, "and", b, "is", max); // Expect 20
 
+// Nested ternary (Right Associative Check)
+// a > b (false) ? "A" : b > 15 (true) ? "B" : "C" -> Expect "B"
 var nested = a > b ? "A" : b > 15 ? "B" : "C";
 print("Nested:", nested);
 
