@@ -1,0 +1,54 @@
+// Test Iterators
+class RangeIterator {
+    fun init(start, end) {
+        this.current = start;
+        this.end = end;
+    }
+    
+    fun next() {
+        if (this.current < this.end) {
+            var val = this.current;
+            this.current = this.current + 1;
+            return val;
+        }
+        return nil;
+    }
+}
+
+class Range {
+    fun init(start, end) {
+        this.start = start;
+        this.end = end;
+    }
+    
+    fun iterator() {
+        return RangeIterator(this.start, this.end);
+    }
+}
+
+print("Iterating range:");
+for (var i in Range(0, 3)) {
+    print(i);
+}
+
+// Test Operator Overloading
+class Vector {
+    fun init(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    
+    fun __add__(other) {
+        return Vector(this.x + other.x, this.y + other.y);
+    }
+    
+    fun __tostring__() { // Not used by print yet, but for future
+        return "Vector(" + this.x + ", " + this.y + ")";
+    }
+}
+
+var v1 = Vector(1, 2);
+var v2 = Vector(3, 4);
+var v3 = v1 + v2;
+
+print("Vector add result:", v3.x, v3.y); // Expect 4 6

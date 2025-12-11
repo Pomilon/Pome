@@ -1,0 +1,34 @@
+class MyNumber {
+    fun init(value) {
+        this.value = value;
+    }
+
+    fun __neg__() {
+        return MyNumber(-this.value);
+    }
+
+    fun __not__() {
+        return !this.value;
+    }
+
+    fun __add__(other) {
+        return MyNumber(this.value + other.value);
+    }
+}
+
+var a = MyNumber(10);
+var b = -a;
+print(b.value); // Expected: -10
+
+var g = MyNumber(20);
+var h = MyNumber(2);
+var i = g + h;
+print(i.value); // Expected: 22
+
+var c = MyNumber(0);
+var d = !c;
+print(d); // Expected: true
+
+var e = MyNumber(5);
+var f = !e;
+print(f); // Expected: false

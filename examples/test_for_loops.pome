@@ -1,0 +1,67 @@
+class MyRangeIterator {
+    fun init(start, end) {
+        this.current = start;
+        this.end = end;
+    }
+
+    fun next() {
+        if (this.current < this.end) {
+            var value = this.current;
+            this.current = this.current + 1;
+            return value;
+        }
+    }
+}
+
+class MyRange {
+    fun init(start, end) {
+        this.start = start;
+        this.end = end;
+    }
+
+    fun iterator() {
+        return MyRangeIterator(this.start, this.end);
+    }
+}
+
+var list = [1, 2, 3];
+print("List iteration:");
+for (var item in list) {
+    print(item);
+}
+// Expected:
+// List iteration:
+// 1
+// 2
+// 3
+
+var table = {"a": 10, "b": 20};
+print("Table iteration (keys):");
+for (var key in table) {
+    print(key);
+}
+// Expected:
+// Table iteration (keys):
+// a
+// b (order may vary)
+
+var myRange = MyRange(0, 3);
+print("Custom iterator iteration:");
+for (var num in myRange) {
+    print(num);
+}
+// Expected:
+// Custom iterator iteration:
+// 0
+// 1
+// 2
+
+print("Standard for loop:");
+for (var i = 0; i < 3; i = i + 1) {
+    print(i);
+}
+// Expected:
+// Standard for loop:
+// 0
+// 1
+// 2

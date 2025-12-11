@@ -1,0 +1,7 @@
+export var magic = 42;
+
+export fun getMagic() {
+    return magic;
+}
+
+var secret = 100; // Not exported

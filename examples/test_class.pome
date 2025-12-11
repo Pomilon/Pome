@@ -1,0 +1,26 @@
+class Dog {
+    fun init(name) {
+        this.name = name;
+        this.sound = "Woof";
+    }
+
+    fun speak() {
+        print(this.name, "says", this.sound);
+    }
+    
+    fun setSound(s) {
+        this.sound = s;
+    }
+}
+
+var d = Dog("Buddy");
+d.speak(); // Buddy says Woof
+
+d.setSound("Bark");
+d.speak(); // Buddy says Bark
+
+print("Dog name is:", d.name); // Access field
+
+// Test method binding logic?
+// var speakFunc = d.speak;
+// speakFunc(); // Should fail if 'this' is not bound, or work if we don't use 'this', or print nil says nil

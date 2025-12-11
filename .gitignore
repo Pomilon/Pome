@@ -1,0 +1,49 @@
+# Build artifacts
+build/
+*.o
+*.d
+*.a
+*.so
+*.lo
+*.la
+*.ln
+*.dll
+*.lib
+*.exe
+*.out
+*.app
+*.obj
+*.lst
+*.res
+*.dynlib
+*.exp
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Editor/IDE specific files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+temp/
+tmp/
+
+# Dependency directories
+deps/
+vendor/
+
+# User-specific files
+.env
+.DS_Store
+
+# Pome specific files
+*.pomec

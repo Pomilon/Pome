@@ -1,0 +1,20 @@
+import math;
+import io;
+import string;
+
+print("PI:", math.pi);
+print("Sin(PI/2):", math.sin(math.pi / 2));
+print("Random:", math.random());
+
+var subStr = string.sub("Hello World", 0, 5);
+print("Substring:", subStr);
+
+print("Writing file...");
+var success = io.writeFile("test_io.txt", "Pome IO Test");
+print("Write success:", success);
+
+if (success) {
+    print("Reading file...");
+    var content = io.readFile("test_io.txt");
+    print("Content:", content);
+}
