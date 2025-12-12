@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <iostream>
+#include "pome_ast.h" // For Program definition
 
 namespace Pome
 {
@@ -50,6 +51,8 @@ namespace Pome
         bool isMarked = false;
         size_t gcSize = 0; // Size of the object for GC accounting
         PomeObject* next = nullptr;
+
+        virtual void markChildren(class GarbageCollector& gc) {} // Mark children for GC
     };
 
     class PomeString;
@@ -95,6 +98,7 @@ namespace Pome
         bool isInstance() const;
         bool isModule() const;
         bool isEnvironment() const;
+        bool isObject() const; // Added for convenience in GC marking
 
         /**
          * Getters
@@ -116,6 +120,8 @@ namespace Pome
         bool operator==(const PomeValue &other) const;
         bool operator!=(const PomeValue &other) const { return !(*this == other); }
         bool operator<(const PomeValue &other) const;
+
+        void mark(class GarbageCollector& gc) const; // Mark contained object for GC traversal
 
     private:
         PomeValueType value_;
@@ -144,11 +150,12 @@ namespace Pome
     public:
         std::string name;
         std::vector<std::string> parameters;
-        const std::vector<std::unique_ptr<Statement>> *body;
+        const std::vector<std::unique_ptr<Statement>> *body; // Pointer to AST body
         Environment* closureEnv = nullptr; 
 
         ObjectType type() const override { return ObjectType::FUNCTION; }
         std::string toString() const override { return "<fn " + name + ">"; }
+        void markChildren(class GarbageCollector& gc) override;
     };
 
     /**
@@ -184,6 +191,7 @@ namespace Pome
         explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;
+        void markChildren(class GarbageCollector& gc) override;
     };
 
     /**
@@ -197,6 +205,7 @@ namespace Pome
         explicit PomeTable(std::map<PomeValue, PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::TABLE; }
         std::string toString() const override;
+        void markChildren(class GarbageCollector& gc) override;
     };
 
     /**
@@ -211,6 +220,7 @@ namespace Pome
         explicit PomeClass(std::string n) : name(std::move(n)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
         std::string toString() const override { return "<class " + name + ">"; }
+        void markChildren(class GarbageCollector& gc) override;
 
         PomeFunction* findMethod(const std::string &name)
         {
@@ -235,6 +245,7 @@ namespace Pome
         explicit PomeInstance(PomeClass* k) : klass(k) {}
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
+        void markChildren(class GarbageCollector& gc) override;
 
         PomeValue get(const std::string &name);
         void set(const std::string &name, PomeValue value);
@@ -247,10 +258,12 @@ namespace Pome
     {
     public:
         std::map<PomeValue, PomeValue> exports;
+        std::shared_ptr<Program> ast_root; // Keeps the AST alive for script-based modules
 
         explicit PomeModule() {}
         ObjectType type() const override { return ObjectType::MODULE; }
         std::string toString() const override { return "<module>"; }
+        void markChildren(GarbageCollector& gc) override; // Declaration only
     };
 
 } // namespace Pome

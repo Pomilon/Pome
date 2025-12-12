@@ -1335,9 +1335,20 @@ namespace Pome
         {
             stmt = parseClassDeclaration();
         }
+        else if (currentToken_.type == TokenType::IDENTIFIER || currentToken_.type == TokenType::THIS) // Exporting an identifier or member access or 'this'
+        {
+            auto expr = parseExpression(LOWEST); // Parse the identifier or member access expression
+            if (!expr) {
+                error("Expected an expression after 'export', got " + currentToken_.debugString());
+                return nullptr;
+            }
+            if (!expect(TokenType::SEMICOLON)) return nullptr; // Expect a semicolon after exported expression
+            nextToken(); // Consume SEMICOLON (it was in peekToken_ for expect, now in currentToken_ after expect)
+            return std::make_unique<ExportExpressionStmt>(std::move(expr), line, col);
+        }
         else
         {
-            error("Expected 'var', 'fun', or 'class' after 'export', got " + currentToken_.debugString()); // Update error message
+            error("Expected 'var', 'fun', 'class', or an identifier after 'export', got " + currentToken_.debugString()); // Update error message
             return nullptr;
         }
 

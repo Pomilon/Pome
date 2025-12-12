@@ -58,7 +58,8 @@ namespace Pome
             CLASS_DECL_STMT,    // New node type for class declarations
             IMPORT_STMT,
             FROM_IMPORT_STMT,
-            EXPORT_STMT // New node types for module system
+            EXPORT_STMT, // Original ExportStmt
+            EXPORT_EXPRESSION_STMT // New node type for exporting an expression (identifier or member access)
         };
 
         ASTNode(NodeType type, int line, int col) : type_(type), line_(line), col_(col) {}
@@ -498,6 +499,18 @@ namespace Pome
         std::unique_ptr<Statement> stmt_;
     };
 
+    class ExportExpressionStmt : public Statement
+    {
+    public:
+        explicit ExportExpressionStmt(std::unique_ptr<Expression> expr, int line, int col)
+            : Statement(EXPORT_EXPRESSION_STMT, line, col), expr_(std::move(expr)) {}
+        Expression *getExpression() const { return expr_.get(); }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::unique_ptr<Expression> expr_;
+    };
+
     /**
      * The main program node, a list of statements
      */
@@ -557,6 +570,7 @@ namespace Pome
         virtual void visit(ImportStmt &stmt) = 0;
         virtual void visit(FromImportStmt &stmt) = 0;
         virtual void visit(ExportStmt &stmt) = 0;
+        virtual void visit(ExportExpressionStmt &stmt) = 0;
 
         /**
          * Program
@@ -594,6 +608,7 @@ namespace Pome
     inline void ImportStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void FromImportStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ExportStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void ExportExpressionStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
 
     inline void Program::accept(ASTVisitor &visitor) { visitor.visit(*this); }
 

@@ -3,6 +3,7 @@ project(pome LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_BUILD_TYPE Debug) # Enable debug build type
 
 # Define library source files (everything except main.cpp)
 set(LIB_SOURCES
@@ -14,6 +15,8 @@ set(LIB_SOURCES
     src/pome_stdlib.cpp
     src/pome_gc.cpp
     src/pome_importer.cpp
+    src/pome_file_utils.cpp
+    src/pome_pkg_info.cpp # Added PomePkgInfo source
 )
 
 # Create the shared library
@@ -26,6 +29,7 @@ target_link_libraries(libpome PUBLIC ${CMAKE_DL_LIBS})
 # Add include directories for the library
 target_include_directories(libpome PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/external # Added for nlohmann/json
 )
 
 # Define executable source files

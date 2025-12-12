@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstddef>
 #include "pome_value.h"
+#include <typeinfo> // For typeid
 
 namespace Pome {
 
@@ -20,20 +21,34 @@ public:
 
     template<typename T, typename... Args>
     T* allocate(Args&&... args) {
-        T* object = new T(std::forward<Args>(args)...);
+        T* object = nullptr; // Initialize to nullptr
+        try {
+            object = new T(std::forward<Args>(args)...);
+        } catch (const std::bad_alloc& e) {
+            std::cerr << "ERROR: std::bad_alloc caught during object allocation for type " << typeid(T).name() << ": " << e.what() << std::endl;
+            throw; // Re-throw out of memory exception
+        } catch (const std::exception& e) {
+            std::cerr << "ERROR: Exception caught during object allocation for type " << typeid(T).name() << ": " << e.what() << std::endl;
+            throw; // Re-throw other exceptions from constructor
+        }
+
+        if (object == nullptr) { // Defensive check, should theoretically not be hit with regular new
+            std::cerr << "ERROR: 'new' returned nullptr unexpectedly for object of type " << typeid(T).name() << std::endl;
+            return nullptr; 
+        }
+
         object->gcSize = sizeof(T);
         object->next = head_;
         head_ = object;
         bytesAllocated_ += sizeof(T); 
         
-        object->isMarked = true; // Protect from immediate collection
+        addTemporaryRoot(object); // Protect from immediate collection during this allocate call
         
         if (bytesAllocated_ > nextGC_) {
             collect();
         }
         
-        
-        object->isMarked = false; // Reset to false for correct liveness tracking in future cycles
+        removeTemporaryRoot(object); // Remove temporary protection
         
         return object;
     }
@@ -56,8 +71,9 @@ public:
 private:
     Interpreter* interpreter_ = nullptr;
     PomeObject* head_ = nullptr;
-    size_t bytesAllocated_ = 0;
-    size_t nextGC_ = 1024 * 1024; // Trigger GC every 1MB initially
+        size_t bytesAllocated_ = 0;
+    private:
+        size_t nextGC_ = 1024 * 1024; // Trigger GC every 1MB initially
 
     std::vector<PomeObject*> tempRoots_;
 

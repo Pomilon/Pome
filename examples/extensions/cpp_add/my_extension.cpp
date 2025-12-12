@@ -1,5 +1,5 @@
-#include "pome_interpreter.h"
-#include "pome_value.h"
+#include <pome/pome_interpreter.h>
+#include <pome/pome_value.h>
 #include <iostream>
 #include <vector>
 

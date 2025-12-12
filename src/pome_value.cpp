@@ -1,5 +1,6 @@
 #include "../include/pome_value.h"
 #include "../include/pome_environment.h"
+#include "../include/pome_gc.h" // For GarbageCollector definition
 #include <sstream>
 #include <iomanip>
 
@@ -119,6 +120,10 @@ namespace Pome
             return (*obj)->type() == ObjectType::ENVIRONMENT; 
         }
         return false;
+    }
+
+    bool PomeValue::isObject() const {
+        return std::holds_alternative<PomeObject*>(value_);
     }
 
     /**
@@ -294,6 +299,12 @@ namespace Pome
         return false; // nil == nil
     }
 
+    void PomeValue::mark(GarbageCollector& gc) const {
+        if (isObject()) {
+            gc.markObject(asObject());
+        }
+    }
+
     /**
      * Implementation of toString for types that were previously in header or split
      */
@@ -309,6 +320,12 @@ namespace Pome
         s += "]";
         return s;
     }
+    void PomeList::markChildren(GarbageCollector& gc) {
+        for (PomeValue& element : elements) {
+            element.mark(gc);
+        }
+    }
+
 
     std::string PomeTable::toString() const
     {
@@ -324,10 +341,38 @@ namespace Pome
         s += "}";
         return s;
     }
-    
+    void PomeTable::markChildren(GarbageCollector& gc) {
+        for (auto const& [key, val] : elements) {
+            key.mark(gc);
+            val.mark(gc);
+        }
+    }
+
     /**
-     * PomeInstance implementation
+     * Class Definition Object
      */
+    // PomeClass has no children directly managed by GC other than methods map
+    void PomeClass::markChildren(GarbageCollector& gc) {
+        for (auto const& [name, func] : methods) {
+            if (func) { // func is PomeFunction*
+                gc.markObject(func);
+            }
+        }
+    }
+
+    /**
+     * Class Instance Object
+     */
+    // PomeInstance methods
+    void PomeInstance::markChildren(GarbageCollector& gc) {
+        if (klass) {
+            gc.markObject(klass);
+        }
+        for (auto const& [name, val] : fields) {
+            val.mark(gc); // val is PomeValue
+        }
+    }
+
     PomeValue PomeInstance::get(const std::string &name)
     {
         auto it = fields.find(name);
@@ -343,4 +388,24 @@ namespace Pome
         fields[name] = value;
     }
 
-} // namespace
+    /**
+     * User-defined Function Object
+     */
+    void PomeFunction::markChildren(GarbageCollector& gc) {
+        if (closureEnv) { // closureEnv is Environment*
+            gc.markObject(closureEnv);
+        }
+        // Body (AST nodes) are not PomeObjects managed by GC
+    }
+
+    /**
+     * Module Object
+     */
+    void PomeModule::markChildren(GarbageCollector& gc) {
+        for (auto const& [key, val] : exports) {
+            key.mark(gc); // Key is PomeValue
+            val.mark(gc); // Value is PomeValue
+        }
+    }
+
+} // namespace Pome

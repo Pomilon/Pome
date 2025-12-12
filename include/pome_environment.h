@@ -42,6 +42,9 @@ namespace Pome
         Environment* getParent() const { return parent_; }
         std::map<std::string, PomeValue>& getStore() { return store_; }
 
+        // GC Mark Children
+        void markChildren(class GarbageCollector& gc) override; // Declare markChildren
+
     private:
         std::map<std::string, PomeValue> store_;
         Environment* parent_; // Pointer to the enclosing scope

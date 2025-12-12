@@ -59,6 +59,7 @@ namespace Pome
         void visit(ImportStmt &stmt) override;
         void visit(FromImportStmt &stmt) override;
         void visit(ExportStmt &stmt) override;
+        void visit(ExportExpressionStmt &stmt) override;
 
         /**
          * Program visitor
@@ -103,8 +104,11 @@ namespace Pome
          * Helper to load or retrieve cached module
          */
         PomeModule *loadModule(const std::string &moduleName);
+        PomeValue loadNativeModule(const std::string& libraryPath); // For loading native shared libraries
 
         PomeValue callPomeFunction(PomeFunction *func, const std::vector<PomeValue> &args, PomeInstance *thisInstance = nullptr);
+
+        friend class Importer; // Grant Importer access to private members
     };
 
 } // namespace Pome

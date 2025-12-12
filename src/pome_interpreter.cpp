@@ -168,6 +168,8 @@ namespace Pome
 
         setupGlobalEnvironment();
 
+        // The addSearchPath calls are no longer needed as the Importer's constructor
+        // now sets up all search paths according to the specification.
         importer_.addSearchPath("examples/");
         importer_.addSearchPath("examples/modules/");
 
@@ -236,6 +238,17 @@ namespace Pome
         for (auto &pair : executedModules_)
         {
             gc_.markObject(pair.second);
+        }
+
+        /**
+         * Mark module cache
+         */
+        for (auto const &[key, val] : importer_.getModuleCache())
+        {
+            if (val.asObject())
+            {
+                gc_.markObject(val.asObject());
+            }
         }
 
         /**
@@ -812,7 +825,7 @@ namespace Pome
         auto pomeFunc = gc_.allocate<PomeFunction>();
         pomeFunc->name = expr.getName();
         pomeFunc->parameters = expr.getParams();
-        pomeFunc->body = &(expr.getBody());
+        pomeFunc->body = &(expr.getBody()); // Store raw pointer to AST body
         pomeFunc->closureEnv = currentEnvironment_;
 
         lastEvaluatedValue_ = PomeValue(pomeFunc);
@@ -1193,12 +1206,11 @@ namespace Pome
         auto pomeFunc = gc_.allocate<PomeFunction>();
         pomeFunc->name = stmt.getName();
         pomeFunc->parameters = stmt.getParams();
-        pomeFunc->body = &(stmt.getBody());
+        pomeFunc->body = &(stmt.getBody()); // Store raw pointer to AST body
         pomeFunc->closureEnv = currentEnvironment_;
 
         currentEnvironment_->define(stmt.getName(), PomeValue(pomeFunc));
     }
-
     void Interpreter::visit(ClassDeclStmt &stmt)
     {
         auto pomeClass = gc_.allocate<PomeClass>(stmt.getName());
@@ -1208,7 +1220,7 @@ namespace Pome
             auto pomeFunc = gc_.allocate<PomeFunction>();
             pomeFunc->name = methodStmt->getName();
             pomeFunc->parameters = methodStmt->getParams();
-            pomeFunc->body = &(methodStmt->getBody());
+            pomeFunc->body = &(methodStmt->getBody()); // Store raw pointer to AST body
             pomeFunc->closureEnv = currentEnvironment_;
 
             pomeClass->methods[pomeFunc->name] = pomeFunc;
@@ -1254,218 +1266,164 @@ namespace Pome
 
     void Interpreter::visit(ExportStmt &stmt)
     {
-        /**
-         * Execute statement to define variable in current scope
-         */
+        // Execute the statement being exported
         stmt.getStmt()->accept(*this);
 
-        std::string name; // Declare name here
-        PomeValue val;    // Declare val here
+        std::string exportName;
+        PomeValue exportedValue;
 
         if (auto v = dynamic_cast<VarDeclStmt *>(stmt.getStmt()))
         {
-            name = v->getName();
-            val = currentEnvironment_->get(name); // Retrieve value from environment
+            exportName = v->getName();
+            exportedValue = currentEnvironment_->get(exportName);
         }
         else if (auto f = dynamic_cast<FunctionDeclStmt *>(stmt.getStmt()))
         {
-            name = f->getName();
-            val = currentEnvironment_->get(name); // Retrieve value from environment
+            exportName = f->getName();
+            exportedValue = currentEnvironment_->get(exportName);
         }
-        else if (auto c = dynamic_cast<ClassDeclStmt *>(stmt.getStmt())) // Handle ClassDeclStmt
+        else if (auto c = dynamic_cast<ClassDeclStmt *>(stmt.getStmt()))
         {
-            name = c->getName();
-            val = currentEnvironment_->get(name); // Retrieve value from environment
+            exportName = c->getName();
+            exportedValue = currentEnvironment_->get(exportName);
         }
         else
         {
-            return; // Should not happen with current parser if it gets a valid ExportStmt
+            throw RuntimeError("Unsupported statement type for 'export'.", stmt.getLine(), stmt.getColumn());
         }
 
-        // Now that name and val are set, add to exports
-        if (!exportStack_.empty())
+        if (exportStack_.empty())
         {
-            try // Keep try/catch for allocation safety
-            {
-                PomeString *keyStr = gc_.allocate<PomeString>(name);
-                PomeValue key(keyStr);
-
-                exportStack_.back()->exports[key] = val;
-            }
-            catch (const std::runtime_error &)
-            {
-                // Handle allocation errors or other issues during export
-            }
+            throw RuntimeError("Export statement used outside of a module context.", stmt.getLine(), stmt.getColumn());
         }
+        PomeModule *currentModule = exportStack_.back();
+        PomeString *keyStr = gc_.allocate<PomeString>(exportName);
+        currentModule->exports[PomeValue(keyStr)] = exportedValue;
+    }
+
+    void Interpreter::visit(ExportExpressionStmt &stmt)
+
+    {
+
+        // Evaluate the expression being exported
+
+        PomeValue exportedValue = evaluateExpression(*stmt.getExpression());
+
+        // Root exportedValue during name resolution if it's an object
+
+        RootGuard valueGuard(gc_, exportedValue.asObject());
+
+        if (exportStack_.empty())
+        {
+
+            throw RuntimeError("Export statement used outside of a module context.", stmt.getLine(), stmt.getColumn());
+        }
+
+        std::string exportName;
+
+        // The name of the exported symbol is based on the expression.
+
+        // It could be a simple IdentifierExpr or a MemberAccessExpr.
+
+        if (auto idExpr = dynamic_cast<IdentifierExpr *>(stmt.getExpression()))
+        {
+
+            exportName = idExpr->getName();
+        }
+        else if (auto memberAccessExpr = dynamic_cast<MemberAccessExpr *>(stmt.getExpression()))
+        {
+
+            // For member access, the last member name is the exported name
+
+            // Example: 'export my_module.greet;' should export 'greet'.
+
+            exportName = memberAccessExpr->getMember();
+        }
+        else
+        {
+
+            throw RuntimeError("Exporting non-identifier or non-member-access expressions directly is not supported.", stmt.getLine(), stmt.getColumn());
+        }
+
+        PomeModule *currentModule = exportStack_.back();
+
+        PomeString *keyStr = gc_.allocate<PomeString>(exportName);
+
+        PomeValue key(keyStr);
+
+        currentModule->exports[key] = exportedValue;
     }
 
     PomeModule *Interpreter::loadModule(const std::string &moduleName)
     {
-        if (executedModules_.count(moduleName))
+        // Delegate module resolution and loading to the Importer
+        PomeValue moduleValue = importer_.import(moduleName);
+        if (!moduleValue.isModule())
         {
-            return executedModules_[moduleName];
+            throw std::runtime_error("Importer returned non-module PomeValue for module: " + moduleName);
         }
 
-        if (moduleName == "math")
-        {
-            PomeModule *mod = StdLib::createMathModule(gc_);
-            executedModules_[moduleName] = mod;
-            return mod;
-        }
-        if (moduleName == "io")
-        {
-            PomeModule *mod = StdLib::createIOModule(gc_);
-            executedModules_[moduleName] = mod;
-            return mod;
-        }
-        if (moduleName == "string")
-        {
-            PomeModule *mod = StdLib::createStringModule(gc_);
-            executedModules_[moduleName] = mod;
-            return mod;
-        }
+        // Cache this locally too for quick access (importer also caches)
+        executedModules_[moduleName] = moduleValue.asModule();
+        return moduleValue.asModule();
+    }
 
-        // --- Native Module Loading ---
-        std::string libName;
-#ifdef _WIN32
-        libName = moduleName + ".dll";
-#elif __APPLE__
-        libName = "lib" + moduleName + ".dylib";
-#else
-        libName = "lib" + moduleName + ".so";
-#endif
-
-        std::vector<std::string> searchPaths = {"./", "./modules/"};
-        
-        // POME_PATH environment variable
-        const char* envPath = std::getenv("POME_PATH");
-        if (envPath) {
-            std::string pathList = envPath;
-            size_t start = 0;
-            size_t end = pathList.find(':');
-            while (end != std::string::npos) {
-                std::string p = pathList.substr(start, end - start);
-                if (!p.empty()) {
-                    if (p.back() != '/') p += "/";
-                    searchPaths.push_back(p);
-                }
-                start = end + 1;
-                end = pathList.find(':', start);
-            }
-            std::string lastP = pathList.substr(start);
-            if (!lastP.empty()) {
-                if (lastP.back() != '/') lastP += "/";
-                searchPaths.push_back(lastP);
-            }
-        }
-
-        // User home directory (~/.pome/modules)
-        const char* homeDir = std::getenv("HOME");
-        if (homeDir) {
-            std::string userModules = std::string(homeDir) + "/.pome/modules/";
-            searchPaths.push_back(userModules);
-        }
-
-        // System directories
-#ifndef _WIN32
-        searchPaths.push_back("/usr/local/lib/pome/modules/");
-        searchPaths.push_back("/usr/lib/pome/modules/");
-#endif
-
+    // Helper for native module loading
+    PomeValue Interpreter::loadNativeModule(const std::string &libraryPath)
+    {
         void *handle = nullptr;
-
-        for (const auto &path : searchPaths)
-        {
-            std::string fullPath = path + libName;
 #ifdef _WIN32
-            handle = LoadLibrary(fullPath.c_str());
+        handle = LoadLibrary(libraryPath.c_str());
 #else
-            // RTLD_NOW: Resolve all symbols immediately
-            handle = dlopen(fullPath.c_str(), RTLD_NOW);
-#endif
-            if (handle)
-                break;
-            }
-
-        if (handle)
-        {
-            typedef void (*InitFunc)(Interpreter *, PomeModule *);
-            InitFunc init = nullptr;
-
-#ifdef _WIN32
-            init = (InitFunc)GetProcAddress((HMODULE)handle, "pome_init");
-#else
-            init = (InitFunc)dlsym(handle, "pome_init");
+        handle = dlopen(libraryPath.c_str(), RTLD_LAZY | RTLD_LOCAL);
 #endif
 
-            if (!init)
-            {
+        if (!handle)
+        {
 #ifdef _WIN32
-                FreeLibrary((HMODULE)handle);
+            // GetLastError for Windows error message
+            throw std::runtime_error("NativeModuleError: Failed to load native library '" + libraryPath + "'.");
 #else
-                dlclose(handle);
+            throw std::runtime_error("NativeModuleError: Failed to load native library '" + libraryPath + "': " + dlerror());
 #endif
-                // It might just be a random DLL/SO that isn't a pome module.
-                // We should probably warn or throw. For now, let's throw.
-                throw std::runtime_error("Failed to load native module '" + moduleName + "': Missing 'pome_init' symbol.");
-            }
-
-            PomeModule *moduleObj = gc_.allocate<PomeModule>();
-            executedModules_[moduleName] = moduleObj;
-
-            // Initialize the module
-            // We pass 'this' (Interpreter*) so the module can register functions/classes
-            try
-            {
-                init(this, moduleObj);
-            }
-            catch (...)
-            {
-                // Cleanup on crash? Pome doesn't really handle crashes well yet.
-                throw;
-            }
-
-            return moduleObj;
         }
-        // -----------------------------
 
-        std::shared_ptr<Program> program = importer_.import(moduleName);
+        // Reset errors for dlsym
+#ifndef _WIN32
+        dlerror();
+#endif
 
-        /**
-         * Prepare new module execution environment
-         * Parent is global environment to access globals like 'print'
-         */
-        Environment *moduleEnv = gc_.allocate<Environment>(globalEnvironment_);
-        PomeModule *moduleObj = gc_.allocate<PomeModule>();
+        // Look up the entry point function
+        // The function signature is `Pome::Value PomeInitModule(Pome::Interpreter* interp);
+        using InitModuleFunc = Pome::PomeValue (*)(Pome::Interpreter *);
+        InitModuleFunc initFunc = nullptr;
 
-        executedModules_[moduleName] = moduleObj;
+#ifdef _WIN32
+        initFunc = (InitModuleFunc)GetProcAddress((HMODULE)handle, "PomeInitModule");
+#else
+        initFunc = (InitModuleFunc)dlsym(handle, "PomeInitModule");
+#endif
 
-        Environment *previousEnvironment = currentEnvironment_;
-        currentEnvironment_ = moduleEnv;
-        exportStack_.push_back(moduleObj);
-
-        try
+        const char *dlsym_error = nullptr;
+#ifndef _WIN32
+        dlsym_error = dlerror();
+#endif
+        if (dlsym_error || !initFunc)
         {
-            program->accept(*this);
-        }
-        catch (const ReturnException &e)
-        {
-            /**
-             * Module return allowed?
-             */
-        }
-        catch (...)
-        {
-            currentEnvironment_ = previousEnvironment;
-            exportStack_.pop_back();
-            executedModules_.erase(moduleName); // Remove partial module on error
-            throw;
+#ifdef _WIN32
+            FreeLibrary((HMODULE)handle);
+#else
+            dlclose(handle);
+#endif
+            throw std::runtime_error("NativeModuleError: Native module '" + libraryPath + "' does not export 'PomeInitModule' function or symbol lookup failed.");
         }
 
-        currentEnvironment_ = previousEnvironment;
-        exportStack_.pop_back();
+        // Call the initialization function, passing the current interpreter
+        Pome::PomeValue moduleTable = initFunc(this);
 
-        return moduleObj;
+        // Optionally store the handle if we need to manage the lifetime of the loaded library
+        // For now, we don't explicitly store handles, assuming the library remains loaded.
+        return moduleTable; // The Pome::Table object returned by the native module
     }
 
     /**

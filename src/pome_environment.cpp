@@ -1,4 +1,5 @@
 #include "../include/pome_environment.h"
+#include "../include/pome_gc.h" // For GarbageCollector definition
 #include <stdexcept>
 #include <iostream>
 
@@ -44,6 +45,15 @@ namespace Pome
             return;
         }
         throw std::runtime_error("Cannot assign to undefined variable: " + name);
+    }
+
+    void Environment::markChildren(GarbageCollector& gc) {
+        if (parent_) {
+            gc.markObject(parent_); // Mark parent environment
+        }
+        for (auto const& [name, val] : store_) {
+            val.mark(gc); // Mark all stored values (which are PomeValue)
+        }
     }
 
 } // namespace Pome

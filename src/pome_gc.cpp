@@ -35,94 +35,23 @@ void GarbageCollector::markObject(PomeObject* object) {
     if (object == nullptr || object->isMarked) return;
     
     object->isMarked = true;
-    
-    /**
-     * Trace children
-     */
-    switch (object->type()) {
-        case ObjectType::STRING:
-        case ObjectType::NATIVE_FUNCTION:
-            /**
-             * No children
-             */
-            break;
-            
-        case ObjectType::FUNCTION: {
-            PomeFunction* fn = static_cast<PomeFunction*>(object);
-            if (fn->closureEnv) markObject(fn->closureEnv);
-            break;
-        }
-        
-        case ObjectType::LIST: {
-            PomeList* list = static_cast<PomeList*>(object);
-            for (auto& val : list->elements) {
-                markValue(val);
-            }
-            break;
-        }
-        
-        case ObjectType::TABLE: {
-            PomeTable* table = static_cast<PomeTable*>(object);
-            markTable(table->elements);
-            break;
-        }
-        
-        case ObjectType::CLASS: {
-            PomeClass* klass = static_cast<PomeClass*>(object);
-            for (auto& pair : klass->methods) {
-                markObject(pair.second);
-            }
-            break;
-        }
-        
-        case ObjectType::INSTANCE: {
-            PomeInstance* instance = static_cast<PomeInstance*>(object);
-            markObject(instance->klass);
-            for (auto& pair : instance->fields) {
-                markValue(pair.second);
-            }
-            break;
-        }
-        
-        case ObjectType::MODULE: {
-            PomeModule* module = static_cast<PomeModule*>(object);
-            markTable(module->exports);
-            break;
-        }
-        
-        case ObjectType::ENVIRONMENT: {
-            Environment* env = static_cast<Environment*>(object);
-            if (env->getParent()) markObject(env->getParent());
-            markEnvironmentStore(env->getStore());
-            break;
-        }
-
-        default:
-            break;
-    }
+    object->markChildren(*this); // Call virtual markChildren method
 }
 
 void GarbageCollector::markValue(PomeValue& value) {
-    /**
-     * Check for pointer types before marking
-     */
-    if (value.isString() || value.isFunction() || value.isList() || value.isTable() || 
-        value.isClass() || value.isInstance() || value.isEnvironment() || value.isPomeFunction() || value.isNativeFunction()) {
-        markObject(value.asObject());
-    }
+    value.mark(*this); // Delegate to PomeValue::mark
 }
 
 void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     for (auto& pair : table) {
-        PomeValue key = pair.first; // Copy
-        markValue(key);
-        markValue(pair.second);
+        pair.first.mark(*this); // Mark key
+        pair.second.mark(*this); // Mark value
     }
 }
 
 void GarbageCollector::markEnvironmentStore(std::map<std::string, PomeValue>& store) {
     for (auto& pair : store) {
-        markValue(pair.second);
+        pair.second.mark(*this); // Mark value
     }
 }
 
