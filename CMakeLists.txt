@@ -4,9 +4,8 @@ project(pome LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Add source files
-set(SOURCE_FILES
-    src/main.cpp
+# Define library source files (everything except main.cpp)
+set(LIB_SOURCES
     src/pome_lexer.cpp
     src/pome_parser.cpp
     src/pome_value.cpp
@@ -17,16 +16,33 @@ set(SOURCE_FILES
     src/pome_importer.cpp
 )
 
+# Create the shared library
+add_library(libpome SHARED ${LIB_SOURCES})
+set_target_properties(libpome PROPERTIES OUTPUT_NAME "pome")
+
+# Link against dynamic loading library (dl on Linux)
+target_link_libraries(libpome PUBLIC ${CMAKE_DL_LIBS})
+
+# Add include directories for the library
+target_include_directories(libpome PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Define executable source files
+set(EXE_SOURCES src/main.cpp)
+
 if(WIN32)
-    # Add resource file for Windows icon
-    # Ensure the resource compiler can find the icon file relative to the source
-    list(APPEND SOURCE_FILES assets/pome.rc)
+    # Add resource file for Windows icon to the executable
+    list(APPEND EXE_SOURCES assets/pome.rc)
 endif()
 
-# Add the executable FIRST
-add_executable(pome ${SOURCE_FILES})
+# Create the executable
+add_executable(pome ${EXE_SOURCES})
 
-# Add include directories
+# Link the executable against the library
+target_link_libraries(pome PRIVATE libpome)
+
+# Add include directories for the executable (so it can find headers to interface with libpome)
 target_include_directories(pome PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )

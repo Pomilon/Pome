@@ -4,16 +4,16 @@ This guide explains how Pome works internally. It's designed for contributors an
 
 ## Overview
 
-Pome follows a classic interpreter architecture:
+Pome follows a classic interpreter architecture, split into a shared library (`libpome`) and a CLI executable (`pome`):
 
 ```
-Source Code
+Source Code (.pome) / Native Module (.so/.dll)
     ↓
 Lexer (Tokenization)
     ↓
 Parser (AST Construction)
     ↓
-Interpreter (Execution)
+Interpreter (Execution) ← Shared Library (libpome)
     ↓
 Runtime Values & Environment
     ↓
@@ -195,17 +195,35 @@ Pome uses a **mark-and-sweep garbage collector**:
 - Runs periodically or when memory pressure is high
 - Can be triggered manually (for debugging)
 
-### 7. Module System (`pome_importer.cpp`)
+### 7. Module System (`pome_importer.cpp` & `pome_interpreter.cpp`)
 
-**Purpose**: Load and manage module dependencies
+
+
+**Purpose**: Load and manage module dependencies (Pome scripts or Native Extensions)
+
+
 
 **Process**:
 
-1. Parse `import` statement to get module path
-2. Load the `.pome` file
-3. Execute the module code in its own environment
-4. Collect exported definitions
-5. Create a module namespace in the importing environment
+1. Parse `import` statement to get module path.
+
+2. **Native Load Check**: Check for `.so`, `.dll`, or `.dylib` file.
+
+   - If found, dynamically load the library using `dlopen`/`LoadLibrary`.
+
+   - Call the `pome_init` entry point to register native functions.
+
+3. **Script Load Check**: If no native module, check for `.pome` file.
+
+   - Load and parse the file.
+
+   - Execute module code in its own environment.
+
+4. Collect exported definitions.
+
+5. Create a module namespace in the importing environment.
+
+
 
 **Module Environment**:
 

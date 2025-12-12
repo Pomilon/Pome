@@ -26,6 +26,7 @@
 
 ### Advanced Features
 
+- **Native Extensions**: Extend Pome with high-performance C++ modules loaded dynamically (`.so`, `.dll`).
 - **Module System**: Import and export modules for better code organization and reusability.
 - **Garbage Collection**: Automatic memory management with mark-and-sweep GC.
 - **Standard Library**: Built-in functions and modules:
@@ -91,6 +92,7 @@ For comprehensive guides on the Pome language, visit the **[docs/](docs/)** dire
 - **[Error Handling](docs/10-error-handling.md)** - Debugging and testing
 - **[Advanced Topics](docs/11-advanced-topics.md)** - Advanced patterns and techniques
 - **[Architecture](docs/12-architecture.md)** - Internal design and implementation (for contributors)
+- **[Native Extensions](docs/13-native-extensions.md)** - Writing C++ modules (FFI)
 
 **[→ Full Documentation Index](docs/README.md)**
 
@@ -277,16 +279,16 @@ Pome/
 
 ## Architecture
 
-Pome follows a classic interpreter architecture:
+Pome follows a classic interpreter architecture, split into a shared library (`libpome`) and a CLI executable:
 
 1. **Lexer** (`pome_lexer`): Tokenizes source code into a stream of tokens.
 2. **Parser** (`pome_parser`): Builds an Abstract Syntax Tree (AST) from tokens.
-3. **Interpreter** (`pome_interpreter`): Walks the AST and executes the program.
+3. **Interpreter** (`pome_interpreter`): Walks the AST and executes the program. It resides in the shared library `libpome`.
 4. **Value System** (`pome_value`): Represents runtime values and objects.
 5. **Environment** (`pome_environment`): Manages variable scopes and bindings.
 6. **Standard Library** (`pome_stdlib`): Provides built-in functions and modules.
 7. **Garbage Collector** (`pome_gc`): Automatically manages memory.
-8. **Module System** (`pome_importer`): Handles code organization and imports.
+8. **Module System** (`pome_importer`): Handles code organization and dynamic imports of both `.pome` scripts and native C++ extensions.
 
 ## Examples
 
@@ -383,7 +385,7 @@ This refactored version improves upon the original implementation with better co
 
 ### Inspiration
 
-Pome draws inspiration from languages like Lua, Python, and Lox—languages known for their clarity and educational value in language design.
+Pome draws inspiration from languages like Lua, Python, and Lox. Languages known for their clarity and educational value in language design.
 
 ---
 

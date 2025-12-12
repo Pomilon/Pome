@@ -16,12 +16,14 @@ Welcome to the comprehensive documentation for the Pome programming language. Th
 10. **[Error Handling](10-error-handling.md)** - Error messages and debugging
 11. **[Advanced Topics](11-advanced-topics.md)** - Closures, scoping, and best practices
 12. **[Architecture](12-architecture.md)** - How Pome works internally
+13. **[Native Extensions](13-native-extensions.md)** - Writing C++ modules (FFI)
 
 ## Quick Links
 
 - [Language Fundamentals](02-language-fundamentals.md) - Start here to learn the basics
 - [Standard Library Reference](09-standard-library.md) - Find built-in functions and modules
 - [Module System](08-modules.md) - Learn how to organize larger projects
+- [Native Extensions](13-native-extensions.md) - Extend Pome with C++
 - [Architecture](12-architecture.md) - For language contributors and curious learners
 
 ## Getting Help
@@ -33,4 +35,4 @@ Welcome to the comprehensive documentation for the Pome programming language. Th
 ---
 
 **Last Updated**: December 2025  
-**Pome Version**: 0.1.0
+**Pome Version**: 0.2.0

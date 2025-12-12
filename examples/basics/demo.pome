@@ -103,7 +103,7 @@ print("Nested element [1][0]:", nested[1][0]); // Output: Nested element [1][0]:
 var myTable = {
     name: "PomeLang",
     "version": 1.0,
-    [1+1]: "two"
+    2: "two" // Computed keys like [1+1] are not supported in literals yet
 };
 print("Table:", myTable); // Output: Table: {"name": "PomeLang", "version": 1.0, 2: "two"}
 print("Table length:", len(myTable)); // Output: Table length: 3

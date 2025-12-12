@@ -10,7 +10,46 @@
 namespace Pome {
 
 Importer::Importer(Interpreter& interpreter) : interpreter_(interpreter) {
+    // 1. Current directory
     searchPaths_.push_back("./");
+    searchPaths_.push_back("./modules/");
+
+    // 2. POME_PATH environment variable
+    const char* envPath = std::getenv("POME_PATH");
+    if (envPath) {
+        std::string pathList = envPath;
+        size_t start = 0;
+        size_t end = pathList.find(':'); // Unix style
+        while (end != std::string::npos) {
+            std::string p = pathList.substr(start, end - start);
+            if (!p.empty()) {
+                if (p.back() != '/') p += "/";
+                searchPaths_.push_back(p);
+            }
+            start = end + 1;
+            end = pathList.find(':', start);
+        }
+        std::string lastP = pathList.substr(start);
+        if (!lastP.empty()) {
+            if (lastP.back() != '/') lastP += "/";
+            searchPaths_.push_back(lastP);
+        }
+    }
+
+    // 3. User home directory (~/.pome/modules)
+    const char* homeDir = std::getenv("HOME");
+    if (homeDir) {
+        std::string userModules = std::string(homeDir) + "/.pome/modules/";
+        searchPaths_.push_back(userModules);
+    }
+
+    // 4. System directory
+#ifdef _WIN32
+    // Windows logic if needed, usually relative to executable
+#else
+    searchPaths_.push_back("/usr/local/lib/pome/modules/");
+    searchPaths_.push_back("/usr/lib/pome/modules/");
+#endif
 }
 
 std::shared_ptr<Program> Importer::import(const std::string& logicalPath) {

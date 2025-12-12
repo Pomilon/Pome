@@ -1,0 +1,14 @@
+// Import the native module
+// This looks for libmy_extension.so in ./modules/
+import my_extension;
+
+print("Native module loaded successfully!");
+
+// Call the native function
+var result = my_extension.add(10, 20);
+print("10 + 20 from C++ =", result);
+
+// Verify type checking (from C++ side)
+print("Testing invalid input:");
+var bad = my_extension.add("not", "numbers");
+print("Result of invalid input:", bad);

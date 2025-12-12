@@ -12,6 +12,12 @@
 #include <sstream> // For stringstream
 #include <ctime>   // For time
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 namespace Pome
 {
 
@@ -163,6 +169,7 @@ namespace Pome
         setupGlobalEnvironment();
 
         importer_.addSearchPath("examples/");
+        importer_.addSearchPath("examples/modules/");
 
         /**
          * Allocate initial export module
@@ -1317,6 +1324,110 @@ namespace Pome
             executedModules_[moduleName] = mod;
             return mod;
         }
+
+        // --- Native Module Loading ---
+        std::string libName;
+#ifdef _WIN32
+        libName = moduleName + ".dll";
+#elif __APPLE__
+        libName = "lib" + moduleName + ".dylib";
+#else
+        libName = "lib" + moduleName + ".so";
+#endif
+
+        std::vector<std::string> searchPaths = {"./", "./modules/"};
+        
+        // POME_PATH environment variable
+        const char* envPath = std::getenv("POME_PATH");
+        if (envPath) {
+            std::string pathList = envPath;
+            size_t start = 0;
+            size_t end = pathList.find(':');
+            while (end != std::string::npos) {
+                std::string p = pathList.substr(start, end - start);
+                if (!p.empty()) {
+                    if (p.back() != '/') p += "/";
+                    searchPaths.push_back(p);
+                }
+                start = end + 1;
+                end = pathList.find(':', start);
+            }
+            std::string lastP = pathList.substr(start);
+            if (!lastP.empty()) {
+                if (lastP.back() != '/') lastP += "/";
+                searchPaths.push_back(lastP);
+            }
+        }
+
+        // User home directory (~/.pome/modules)
+        const char* homeDir = std::getenv("HOME");
+        if (homeDir) {
+            std::string userModules = std::string(homeDir) + "/.pome/modules/";
+            searchPaths.push_back(userModules);
+        }
+
+        // System directories
+#ifndef _WIN32
+        searchPaths.push_back("/usr/local/lib/pome/modules/");
+        searchPaths.push_back("/usr/lib/pome/modules/");
+#endif
+
+        void *handle = nullptr;
+
+        for (const auto &path : searchPaths)
+        {
+            std::string fullPath = path + libName;
+#ifdef _WIN32
+            handle = LoadLibrary(fullPath.c_str());
+#else
+            // RTLD_NOW: Resolve all symbols immediately
+            handle = dlopen(fullPath.c_str(), RTLD_NOW);
+#endif
+            if (handle)
+                break;
+            }
+
+        if (handle)
+        {
+            typedef void (*InitFunc)(Interpreter *, PomeModule *);
+            InitFunc init = nullptr;
+
+#ifdef _WIN32
+            init = (InitFunc)GetProcAddress((HMODULE)handle, "pome_init");
+#else
+            init = (InitFunc)dlsym(handle, "pome_init");
+#endif
+
+            if (!init)
+            {
+#ifdef _WIN32
+                FreeLibrary((HMODULE)handle);
+#else
+                dlclose(handle);
+#endif
+                // It might just be a random DLL/SO that isn't a pome module.
+                // We should probably warn or throw. For now, let's throw.
+                throw std::runtime_error("Failed to load native module '" + moduleName + "': Missing 'pome_init' symbol.");
+            }
+
+            PomeModule *moduleObj = gc_.allocate<PomeModule>();
+            executedModules_[moduleName] = moduleObj;
+
+            // Initialize the module
+            // We pass 'this' (Interpreter*) so the module can register functions/classes
+            try
+            {
+                init(this, moduleObj);
+            }
+            catch (...)
+            {
+                // Cleanup on crash? Pome doesn't really handle crashes well yet.
+                throw;
+            }
+
+            return moduleObj;
+        }
+        // -----------------------------
 
         std::shared_ptr<Program> program = importer_.import(moduleName);
 
