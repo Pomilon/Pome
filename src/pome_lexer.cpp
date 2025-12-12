@@ -1,4 +1,5 @@
 #include "../include/pome_lexer.h"
+#include <iostream>
 #include <map>
 
 namespace Pome
@@ -191,11 +192,33 @@ namespace Pome
         }
         if (peek() == '.' && (currentPos + 1 < source.length() && isdigit(source[currentPos + 1])))
         {
-            hasDecimal = true;
             advance(); // Consume the dot
             while (currentPos < source.length() && isdigit(peek()))
             {
                 advance();
+            }
+        }
+        // Handle scientific notation (e.g., 1e5, 1.5e-3, 1E+2)
+        if (currentPos < source.length() && (peek() == 'e' || peek() == 'E'))
+        {
+            advance(); // Consume 'e' or 'E'
+            if (currentPos < source.length() && (peek() == '+' || peek() == '-'))
+            {
+                advance(); // Consume '+' or '-'
+            }
+            // Must have at least one digit after 'e'/'E' (and optional sign)
+            if (currentPos < source.length() && isdigit(peek()))
+            {
+                while (currentPos < source.length() && isdigit(peek()))
+                {
+                    advance();
+                }
+            }
+            else
+            {
+                // If 'e'/'E' is not followed by digits (or sign then digits),
+                // it's not a valid scientific number.
+                // Leave it to std::stod to handle invalid format, but consume the 'e'/'E' and optional sign.
             }
         }
         std::string value = source.substr(start, currentPos - start);
@@ -208,13 +231,50 @@ namespace Pome
          * Assume opening quote has already been consumed
          */
         size_t start = currentPos;
+        std::string raw_value; // To build the string with processed escapes
+
         while (peek() != '"' && peek() != '\0')
         {
             if (peek() == '\n')
             { // Strings cannot span multiple lines in Pome without explicit escape (not implemented yet)
                 throw std::runtime_error("Unterminated string literal (newline encountered)");
             }
-            advance();
+
+            if (peek() == '\\')
+            {              // Handle escape sequences
+                advance(); // Consume '\\'
+                char escapedChar = peek();
+                switch (escapedChar)
+                {
+                case '"':
+                    raw_value += '"';
+                    break;
+                case '\\':
+                    raw_value += '\\';
+                    break;
+                case 'n':
+                    raw_value += '\n';
+                    break;
+                case 't':
+                    raw_value += '\t';
+                    break;
+                case 'r':
+                    raw_value += '\r';
+                    break;
+                // Add more escape sequences as needed
+                default:
+                    // For unknown escape sequences, include the backslash and the character literally
+                    raw_value += '\\';
+                    raw_value += escapedChar;
+                    break;
+                }
+                advance(); // Consume the escaped character
+            }
+            else
+            {
+                raw_value += peek();
+                advance(); // Consume regular character
+            }
         }
 
         if (peek() == '\0')
@@ -222,9 +282,9 @@ namespace Pome
             throw std::runtime_error("Unterminated string literal (EOF)");
         }
 
-        std::string value = source.substr(start, currentPos - start);
-        advance(); // Consume the closing quote
-        return makeToken(TokenType::STRING, value);
+        // Consume the closing quote
+        advance();
+        return makeToken(TokenType::STRING, raw_value);
     }
 
     Token Lexer::makeToken(TokenType type, const std::string &value)
@@ -243,149 +303,190 @@ namespace Pome
 
         if (currentPos >= source.length())
         {
-            return makeToken(TokenType::END_OF_FILE, "");
+            auto token = makeToken(TokenType::END_OF_FILE, "");
+            return token;
         }
 
         char c = peek();
-        int tokenStartCol = currentCol; // Store starting column for this token
+        // int tokenStartCol = currentCol; // Store starting column for this token - not used
 
+        Token token; // Declare token here
         if (isalpha(c) || c == '_')
         {
-            return readIdentifier();
+            token = readIdentifier();
         }
 
-        if (isdigit(c))
+        else if (isdigit(c))
         {
-            return readNumber();
+            token = readNumber();
         }
 
-        if (c == '"')
+        else if (c == '"')
         {
             advance(); // Consume opening quote
             try
             {
-                return readString();
+                token = readString();
             }
             catch (const std::runtime_error &e)
             {
                 /**
                  * For now, re-throw or return an error token
                  */
-                return makeToken(TokenType::UNKNOWN, e.what()); // Or handle more gracefully
+                token = makeToken(TokenType::UNKNOWN, e.what()); // Or handle more gracefully
             }
         }
 
         /**
          * Handle operators and delimiters
          */
-        switch (c)
-        {
-        case '+':
-            advance();
-            return makeToken(TokenType::PLUS, "+");
-        case '-':
-            advance();
-            return makeToken(TokenType::MINUS, "-");
-        case '*':
-            advance();
-            return makeToken(TokenType::MULTIPLY, "*");
-        case '%':
-            advance();
-            return makeToken(TokenType::MODULO, "% ");
-        case '=':
-        {
-            advance();
-            if (peek() == '=')
+        else
+            switch (c) // Changed to else if to correctly chain with previous conditions
+            {
+            case '+':
+                advance();
+                token = makeToken(TokenType::PLUS, "+");
+                break;
+            case '-':
+                advance();
+                token = makeToken(TokenType::MINUS, "-");
+                break;
+            case '*':
+                advance();
+                token = makeToken(TokenType::MULTIPLY, "*");
+                break;
+            case '%':
+                advance();
+                token = makeToken(TokenType::MODULO, "%");
+                break;
+            case '^':
+                advance();
+                token = makeToken(TokenType::CARET, "^");
+                break;
+            case '=':
             {
                 advance();
-                return makeToken(TokenType::EQ, "==");
+                if (peek() == '=')
+                {
+                    advance();
+                    token = makeToken(TokenType::EQ, "==");
+                }
+                else
+                {
+                    token = makeToken(TokenType::ASSIGN, "=");
+                }
+                break;
             }
-            return makeToken(TokenType::ASSIGN, "=");
-        }
-        case '!':
-        {
-            advance();
-            if (peek() == '=')
+            case '!':
             {
                 advance();
-                return makeToken(TokenType::NE, "!=");
+                if (peek() == '=')
+                {
+                    advance();
+                    token = makeToken(TokenType::NE, "!=");
+                }
+                else
+                {
+                    token = makeToken(TokenType::NOT, "!"); // Changed to NOT for unary operator
+                }
+                break;
             }
-            /**
-             * If '!' is not followed by '=', it might be a unary NOT.
-             * For now, treat it as unknown, parser will decide its context.
-             */
-            return makeToken(TokenType::NOT, "!"); // Changed to NOT for unary operator
-        }
-        case '<':
-        {
-            advance();
-            if (peek() == '=')
+            case '<':
             {
                 advance();
-                return makeToken(TokenType::LE, "<=");
+                if (peek() == '=')
+                {
+                    advance();
+                    token = makeToken(TokenType::LE, "<=");
+                }
+                else
+                {
+                    token = makeToken(TokenType::LT, "<");
+                }
+                break;
             }
-            return makeToken(TokenType::LT, "<");
-        }
-        case '>':
-        {
-            advance();
-            if (peek() == '=')
+            case '>':
             {
                 advance();
-                return makeToken(TokenType::GE, ">=");
+                if (peek() == '=')
+                {
+                    advance();
+                    token = makeToken(TokenType::GE, ">=");
+                }
+                else
+                {
+                    token = makeToken(TokenType::GT, ">");
+                }
+                break;
             }
-            return makeToken(TokenType::GT, ">");
-        }
-        case '(':
-            advance();
-            return makeToken(TokenType::LPAREN, "(");
-        case ')':
-            advance();
-            return makeToken(TokenType::RPAREN, ")");
-        case '{':
-            advance();
-            return makeToken(TokenType::LBRACE, "{");
-        case '}':
-            advance();
-            return makeToken(TokenType::RBRACE, "}");
-        case '[':
-            advance();
-            return makeToken(TokenType::LBRACKET, "[");
-        case ']':
-            advance();
-            return makeToken(TokenType::RBRACKET, "]");
-        case ',':
-            advance();
-            return makeToken(TokenType::COMMA, ",");
-        case '.':
-            advance();
-            return makeToken(TokenType::DOT, ".");
-        case ':':
-            advance();
-            return makeToken(TokenType::COLON, ":");
-        case ';':
-            advance();
-            return makeToken(TokenType::SEMICOLON, ";");
-        case '?':
-            advance();
-            return makeToken(TokenType::QUESTION, "?"); // Added for ternary operator
-        case '/':
-        {
-            advance();
-            if (peek() == '/' || peek() == '*')
-            {   // This should be handled by skipWhitespace now
-                /**
-                 * This block should ideally not be reached if skipWhitespace is correct
-                 * For now, just return DIVIDE, but it implies a problem in comment skipping logic
-                 */
-                return makeToken(TokenType::DIVIDE, "/");
+            case '(':
+                advance();
+                token = makeToken(TokenType::LPAREN, "(");
+                break;
+            case ')':
+                advance();
+                token = makeToken(TokenType::RPAREN, ")");
+                break;
+            case '{':
+                advance();
+                token = makeToken(TokenType::LBRACE, "{");
+                break;
+            case '}':
+                advance();
+                token = makeToken(TokenType::RBRACE, "}");
+                break;
+            case '[':
+                advance();
+                token = makeToken(TokenType::LBRACKET, "[");
+                break;
+                break;
+            case ']':
+                advance();
+                token = makeToken(TokenType::RBRACKET, "]");
+                break;
+            case ',':
+                advance();
+                token = makeToken(TokenType::COMMA, ",");
+                break;
+            case '.':
+                advance();
+                token = makeToken(TokenType::DOT, ".");
+                break;
+            case ':':
+                advance();
+                token = makeToken(TokenType::COLON, ":");
+                break;
+            case ';':
+                advance();
+                token = makeToken(TokenType::SEMICOLON, ";");
+                break;
+            case '?':
+                advance();
+                token = makeToken(TokenType::QUESTION, "?"); // Added for ternary operator
+                break;
+            case '/':
+            {
+                advance();
+                if (peek() == '/' || peek() == '*')
+                { // This should be handled by skipWhitespace now
+                    /**
+                     * This block should ideally not be reached if skipWhitespace is correct
+                     * For now, just return DIVIDE, but it implies a problem in comment skipping logic
+                     */
+                    token = makeToken(TokenType::DIVIDE, "/");
+                }
+                else
+                {
+                    token = makeToken(TokenType::DIVIDE, "/");
+                }
+                break;
             }
-            return makeToken(TokenType::DIVIDE, "/");
-        }
-        default:
-            std::string unknownChar(1, advance());
-            return makeToken(TokenType::UNKNOWN, unknownChar);
-        }
+            default:
+                std::string unknownChar(1, advance());
+                token = makeToken(TokenType::UNKNOWN, unknownChar);
+                break;
+            }
+        return token;
     }
 
 } // namespace Pome

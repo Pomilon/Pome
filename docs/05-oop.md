@@ -209,7 +209,7 @@ print(account.getBalance());  // Output: 1300
 
 ## Encapsulation Pattern
 
-While Pome doesn't enforce access modifiers (private/public), you can follow conventions:
+While Pome doesn't enforce access modifiers (private/public), you can follow conventions.
 
 ```pome
 class Stack {
@@ -225,8 +225,8 @@ class Stack {
         if (len(this._items) == 0) {
             return nil;
         }
-        var item = this._items[len(this._items) - 1];
-        this._items = this._items[0:len(this._items) - 1];
+        var item = this._items[-1];
+        this._items = this._items[:len(this._items)-1];
         return item;
     }
     
@@ -240,7 +240,7 @@ stack.push(1);
 stack.push(2);
 print(stack.pop());  // Output: 2
 print(stack.pop());  // Output: 1
-print(stack.isEmpty());  // Output: true
+print(stack.isEmpty());     // Output: true
 ```
 
 ## Composition
@@ -349,7 +349,7 @@ class Point {
 
 // Create points
 var p1 = Point(3, 4);
-print(p1.distanceFromOrigin());  // Output: 5
+print("Distance from origin:", p1.distanceFromOrigin()); // Output: Distance from origin: 5
 ```
 
 ### Object Comparison
@@ -384,6 +384,7 @@ print(c1.equals(c3));  // Output: false
 1. **Use meaningful class names**: `BankAccount` is clearer than `BA`
 
 2. **Initialize all properties in init**: Prevents undefined property errors
+
    ```pome
    class Dog {
        fun init(name) {
@@ -400,6 +401,7 @@ print(c1.equals(c3));  // Output: false
 5. **Consider composition over complex inheritance patterns**
 
 6. **Document the expected behavior**: Use comments for non-obvious methods
+
    ```pome
    // Removes and returns the top item
    fun pop() {

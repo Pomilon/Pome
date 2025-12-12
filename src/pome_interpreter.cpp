@@ -74,7 +74,7 @@ namespace Pome
         }
         if (!args[0].isString())
         {
-            return PomeValue(std::monostate{}); 
+            return PomeValue(std::monostate{});
         }
 
         try
@@ -82,22 +82,73 @@ namespace Pome
             size_t pos;
             double d = std::stod(args[0].asString(), &pos);
             if (pos == args[0].asString().length())
-            { 
+            {
                 return PomeValue(d);
             }
             else
             {
-                return PomeValue(std::monostate{}); 
+                return PomeValue(std::monostate{});
             }
         }
         catch (const std::out_of_range &oor)
         {
-            return PomeValue(std::monostate{}); 
+            return PomeValue(std::monostate{});
         }
         catch (const std::invalid_argument &ia)
         {
-            return PomeValue(std::monostate{}); 
+            return PomeValue(std::monostate{});
         }
+    }
+
+    PomeValue nativeType(GarbageCollector &gc, const std::vector<PomeValue> &args)
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error("type() expects 1 argument.");
+        }
+
+        if (args[0].isNumber())
+        {
+            return PomeValue(gc.allocate<PomeString>("number"));
+        }
+        else if (args[0].isString())
+        {
+            return PomeValue(gc.allocate<PomeString>("string"));
+        }
+        else if (args[0].isBool())
+        {
+            return PomeValue(gc.allocate<PomeString>("boolean"));
+        }
+        else if (args[0].isNil())
+        {
+            return PomeValue(gc.allocate<PomeString>("nil"));
+        }
+        else if (args[0].isList())
+        {
+            return PomeValue(gc.allocate<PomeString>("list"));
+        }
+        else if (args[0].isTable())
+        {
+            return PomeValue(gc.allocate<PomeString>("table"));
+        }
+        else if (args[0].isFunction())
+        {
+            return PomeValue(gc.allocate<PomeString>("function"));
+        }
+        else if (args[0].isClass())
+        {
+            return PomeValue(gc.allocate<PomeString>("class"));
+        }
+        else if (args[0].isInstance())
+        {
+            return PomeValue(gc.allocate<PomeString>("instance"));
+        }
+        else if (args[0].isModule())
+        {
+            return PomeValue(gc.allocate<PomeString>("module"));
+        }
+
+        return PomeValue(gc.allocate<PomeString>("unknown"));
     }
 
     Interpreter::Interpreter() : importer_(*this)
@@ -106,17 +157,17 @@ namespace Pome
         /**
          * Allocate Environment via GC
          */
-        currentEnvironment_ = gc_.allocate<Environment>(nullptr); 
+        currentEnvironment_ = gc_.allocate<Environment>(nullptr);
         globalEnvironment_ = currentEnvironment_; // Set global environment
-        
+
         setupGlobalEnvironment();
-        
+
         importer_.addSearchPath("examples/");
 
         /**
          * Allocate initial export module
          */
-        PomeModule* rootModule = gc_.allocate<PomeModule>();
+        PomeModule *rootModule = gc_.allocate<PomeModule>();
         exportStack_.push_back(rootModule);
 
         /**
@@ -129,22 +180,25 @@ namespace Pome
     {
         auto printFn = gc_.allocate<NativeFunction>("print", nativePrint);
         currentEnvironment_->define("print", PomeValue(printFn));
-        
+
         auto lenFn = gc_.allocate<NativeFunction>("len", nativeLen);
         currentEnvironment_->define("len", PomeValue(lenFn));
-        
+
         auto toNumFn = gc_.allocate<NativeFunction>("tonumber", nativeToNumber);
         currentEnvironment_->define("tonumber", PomeValue(toNumFn));
 
-        auto gcCountFn = gc_.allocate<NativeFunction>("gc_count", [this](const std::vector<PomeValue>& args) {
-            return PomeValue((double)gc_.getObjectCount());
-        });
+        auto typeFn = gc_.allocate<NativeFunction>("type", [this](const std::vector<PomeValue> &args)
+                                                   { return nativeType(gc_, args); });
+        currentEnvironment_->define("type", PomeValue(typeFn));
+
+        auto gcCountFn = gc_.allocate<NativeFunction>("gc_count", [this](const std::vector<PomeValue> &args)
+                                                      { return PomeValue((double)gc_.getObjectCount()); });
         currentEnvironment_->define("gc_count", PomeValue(gcCountFn));
 
-        auto gcCollectFn = gc_.allocate<NativeFunction>("gc_collect", [this](const std::vector<PomeValue>& args) {
+        auto gcCollectFn = gc_.allocate<NativeFunction>("gc_collect", [this](const std::vector<PomeValue> &args)
+                                                        {
             gc_.collect();
-            return PomeValue(std::monostate{});
-        });
+            return PomeValue(std::monostate{}); });
         currentEnvironment_->define("gc_collect", PomeValue(gcCollectFn));
 
         /**
@@ -152,32 +206,36 @@ namespace Pome
          */
         currentEnvironment_->define("PI", PomeValue(3.141592653589793));
     }
-    
-    void Interpreter::markRoots() {
+
+    void Interpreter::markRoots()
+    {
         /**
          * Mark current and global environment
          */
         gc_.markObject(currentEnvironment_);
         gc_.markObject(globalEnvironment_);
-        
+
         /**
          * Mark export stack
          */
-        for (auto* mod : exportStack_) {
+        for (auto *mod : exportStack_)
+        {
             gc_.markObject(mod);
         }
-        
+
         /**
          * Mark executed modules
          */
-        for (auto& pair : executedModules_) {
+        for (auto &pair : executedModules_)
+        {
             gc_.markObject(pair.second);
         }
-        
+
         /**
          * Mark last evaluated value
          */
-        if (lastEvaluatedValue_.asObject()) {
+        if (lastEvaluatedValue_.asObject())
+        {
             gc_.markObject(lastEvaluatedValue_.asObject());
         }
     }
@@ -193,7 +251,7 @@ namespace Pome
             lastEvaluatedValue_ = e.value;
         }
         catch (const PomeException &e)
-        { 
+        {
             std::cerr << e.what() << std::endl;
         }
         catch (const std::runtime_error &e)
@@ -233,7 +291,7 @@ namespace Pome
         /**
          * Allocate string via GC
          */
-        PomeString* s = gc_.allocate<PomeString>(expr.getValue());
+        PomeString *s = gc_.allocate<PomeString>(expr.getValue());
         lastEvaluatedValue_ = PomeValue(s);
     }
 
@@ -256,15 +314,34 @@ namespace Pome
     {
         PomeValue left = evaluateExpression(*expr.getLeft());
         /**
-         * Temporarily root left while evaluating right
+         * Temporarily root left while evaluating right (or deciding not to)
          */
         RootGuard guard(gc_, left.asObject());
-        
+
+        std::string op = expr.getOperator();
+
+        if (op == "and")
+        {
+            if (!left.asBool())
+            {
+                lastEvaluatedValue_ = left;
+                return;
+            }
+        }
+        else if (op == "or")
+        {
+            if (left.asBool())
+            {
+                lastEvaluatedValue_ = left;
+                return;
+            }
+        }
+
         PomeValue right = evaluateExpression(*expr.getRight());
-        
+
         try
         {
-            lastEvaluatedValue_ = applyBinaryOp(left, expr.getOperator(), right);
+            lastEvaluatedValue_ = applyBinaryOp(left, op, right);
         }
         catch (const std::runtime_error &e)
         {
@@ -298,12 +375,12 @@ namespace Pome
              * Root objectValue
              */
             RootGuard objGuard(gc_, objectValue.asObject());
-            
+
             std::string memberName = memberAccess->getMember();
 
             if (objectValue.isInstance())
             {
-                PomeInstance* instance = objectValue.asInstance();
+                PomeInstance *instance = objectValue.asInstance();
                 PomeValue field = instance->get(memberName);
                 if (!field.isNil())
                 {
@@ -315,34 +392,35 @@ namespace Pome
                     if (method)
                     {
                         calleeValue = PomeValue(method);
-                        thisValue = objectValue; 
+                        thisValue = objectValue;
                         isMethodCall = true;
                     }
                     else
                     {
-                        calleeValue = PomeValue(std::monostate{}); 
+                        calleeValue = PomeValue(std::monostate{});
                     }
                 }
             }
             /**
              * Fix for module access
              */
-            else if (objectValue.asModule()) {
+            else if (objectValue.asModule())
+            {
                 auto module = objectValue.asModule();
-                 PomeString* keyStr = gc_.allocate<PomeString>(memberName);
-                 PomeValue key(keyStr);
-                 
-                 if (module->exports.count(key))
+                PomeString *keyStr = gc_.allocate<PomeString>(memberName);
+                PomeValue key(keyStr);
+
+                if (module->exports.count(key))
                     calleeValue = module->exports[key];
-                 else
+                else
                     calleeValue = PomeValue(std::monostate{});
             }
             else if (objectValue.isTable())
             {
                 auto table = objectValue.asTable();
-                PomeString* keyStr = gc_.allocate<PomeString>(memberName);
+                PomeString *keyStr = gc_.allocate<PomeString>(memberName);
                 PomeValue key(keyStr);
-                
+
                 if (table->elements.count(key))
                     calleeValue = table->elements[key];
                 else
@@ -361,20 +439,20 @@ namespace Pome
 
         if (calleeValue.isClass())
         {
-            PomeClass* klass = calleeValue.asClass();
-            PomeInstance* instance = gc_.allocate<PomeInstance>(klass);
+            PomeClass *klass = calleeValue.asClass();
+            PomeInstance *instance = gc_.allocate<PomeInstance>(klass);
 
             auto initMethod = klass->findMethod("init");
             if (initMethod)
             {
                 std::vector<PomeValue> args;
                 RootGuard instanceGuard(gc_, instance);
-                
+
                 for (const auto &argExpr : expr.getArgs())
                 {
                     args.push_back(evaluateExpression(*argExpr));
                 }
-                
+
                 callPomeFunction(initMethod, args, instance);
             }
 
@@ -385,16 +463,17 @@ namespace Pome
         if (!calleeValue.isFunction())
         {
             if (!calleeValue.isNil())
-                 throw RuntimeError("Attempt to call a non-function value.", expr.getLine(), expr.getColumn());
+                throw RuntimeError("Attempt to call a non-function value.", expr.getLine(), expr.getColumn());
         }
-        
-        if (calleeValue.isNil()) {
-             throw RuntimeError("Attempt to call a nil value.", expr.getLine(), expr.getColumn());
+
+        if (calleeValue.isNil())
+        {
+            throw RuntimeError("Attempt to call a nil value.", expr.getLine(), expr.getColumn());
         }
 
         std::vector<PomeValue> args;
         std::vector<std::unique_ptr<RootGuard>> argGuards;
-        
+
         for (const auto &argExpr : expr.getArgs())
         {
             PomeValue v = evaluateExpression(*argExpr);
@@ -404,7 +483,7 @@ namespace Pome
 
         if (calleeValue.isNativeFunction())
         {
-            NativeFunction* nativeFunc = calleeValue.asNativeFunction();
+            NativeFunction *nativeFunc = calleeValue.asNativeFunction();
             try
             {
                 lastEvaluatedValue_ = nativeFunc->call(args);
@@ -416,8 +495,8 @@ namespace Pome
         }
         else if (calleeValue.isPomeFunction())
         {
-            PomeFunction* pomeFunc = calleeValue.asPomeFunction();
-            PomeInstance* thisInstance = nullptr;
+            PomeFunction *pomeFunc = calleeValue.asPomeFunction();
+            PomeInstance *thisInstance = nullptr;
             if (isMethodCall && thisValue.isInstance())
             {
                 thisInstance = thisValue.asInstance();
@@ -434,7 +513,7 @@ namespace Pome
         }
     }
 
-    PomeValue Interpreter::callPomeFunction(PomeFunction* pomeFunc, const std::vector<PomeValue> &args, PomeInstance* thisInstance)
+    PomeValue Interpreter::callPomeFunction(PomeFunction *pomeFunc, const std::vector<PomeValue> &args, PomeInstance *thisInstance)
     {
         if (args.size() != pomeFunc->parameters.size())
         {
@@ -443,7 +522,7 @@ namespace Pome
                                      " arguments, but got " + std::to_string(args.size()) + ".");
         }
 
-        Environment* previousEnvironment = currentEnvironment_;
+        Environment *previousEnvironment = currentEnvironment_;
         /**
          * New environment rooted via currentEnvironment_ once assigned
          */
@@ -473,7 +552,7 @@ namespace Pome
         }
 
         currentEnvironment_ = previousEnvironment; // Restore env
-        
+
         return returnValue;
     }
 
@@ -481,20 +560,20 @@ namespace Pome
     {
         PomeValue objectValue = evaluateExpression(*expr.getObject());
         const std::string &memberName = expr.getMember();
-        
+
         /**
          * Root object
          */
         RootGuard objGuard(gc_, objectValue.asObject());
 
         if (auto module = objectValue.asModule())
-        { 
+        {
             /**
              * Create key string with GC
              */
-            PomeString* keyStr = gc_.allocate<PomeString>(memberName);
+            PomeString *keyStr = gc_.allocate<PomeString>(memberName);
             PomeValue key(keyStr);
-            
+
             if (module->exports.count(key))
             {
                 lastEvaluatedValue_ = module->exports[key];
@@ -507,21 +586,21 @@ namespace Pome
         else if (objectValue.isTable())
         {
             auto table = objectValue.asTable();
-            PomeString* keyStr = gc_.allocate<PomeString>(memberName);
+            PomeString *keyStr = gc_.allocate<PomeString>(memberName);
             PomeValue key(keyStr);
-            
+
             if (table->elements.count(key))
             {
                 lastEvaluatedValue_ = table->elements[key];
             }
             else
             {
-                lastEvaluatedValue_ = PomeValue(std::monostate{}); 
+                lastEvaluatedValue_ = PomeValue(std::monostate{});
             }
         }
         else if (objectValue.isInstance())
         {
-            PomeInstance* instance = objectValue.asInstance();
+            PomeInstance *instance = objectValue.asInstance();
             PomeValue field = instance->get(memberName);
             if (!field.isNil())
             {
@@ -536,7 +615,7 @@ namespace Pome
                 }
                 else
                 {
-                    lastEvaluatedValue_ = PomeValue(std::monostate{}); 
+                    lastEvaluatedValue_ = PomeValue(std::monostate{});
                 }
             }
         }
@@ -550,16 +629,16 @@ namespace Pome
     {
         std::vector<PomeValue> elements;
         std::vector<std::unique_ptr<RootGuard>> guards;
-        
+
         for (const auto &el : expr.getElements())
         {
             PomeValue v = evaluateExpression(*el);
             elements.push_back(v);
             guards.push_back(std::make_unique<RootGuard>(gc_, v.asObject()));
         }
-        
+
         auto pomeList = gc_.allocate<PomeList>(std::move(elements));
-        
+
         lastEvaluatedValue_ = PomeValue(pomeList);
     }
 
@@ -567,18 +646,18 @@ namespace Pome
     {
         std::map<PomeValue, PomeValue> elements;
         std::vector<std::unique_ptr<RootGuard>> guards;
-        
+
         for (const auto &entry : expr.getEntries())
         {
             PomeValue key = evaluateExpression(*(entry.first));
             guards.push_back(std::make_unique<RootGuard>(gc_, key.asObject()));
-            
+
             PomeValue value = evaluateExpression(*(entry.second));
             guards.push_back(std::make_unique<RootGuard>(gc_, value.asObject()));
-            
+
             elements[key] = value;
         }
-        
+
         auto pomeTable = gc_.allocate<PomeTable>(std::move(elements));
         lastEvaluatedValue_ = PomeValue(pomeTable);
     }
@@ -587,7 +666,7 @@ namespace Pome
     {
         PomeValue objectValue = evaluateExpression(*expr.getObject());
         RootGuard objGuard(gc_, objectValue.asObject());
-        
+
         PomeValue indexValue = evaluateExpression(*expr.getIndex());
         RootGuard indexGuard(gc_, indexValue.asObject());
 
@@ -608,11 +687,15 @@ namespace Pome
 
             long long idx = static_cast<long long>(idxDouble);
 
+            if (idx < 0)
+                idx += list->elements.size(); // Handle negative index
+
             if (idx < 0 || idx >= static_cast<long long>(list->elements.size()))
             {
                 lastEvaluatedValue_ = PomeValue(std::monostate{});
             }
-            else {
+            else
+            {
                 lastEvaluatedValue_ = list->elements[idx];
             }
         }
@@ -635,6 +718,75 @@ namespace Pome
         }
     }
 
+    void Interpreter::visit(SliceExpr &expr)
+    {
+        PomeValue objectValue = evaluateExpression(*expr.getObject());
+        RootGuard objGuard(gc_, objectValue.asObject());
+
+        if (!objectValue.isList() && !objectValue.isString())
+        {
+            throw RuntimeError("Slicing is only supported for lists and strings.", expr.getLine(), expr.getColumn());
+        }
+
+        long long len = 0;
+        if (objectValue.isList())
+            len = objectValue.asList()->elements.size();
+        else
+            len = objectValue.asString().length();
+
+        long long startIdx = 0;
+        if (expr.getStart())
+        {
+            PomeValue startVal = evaluateExpression(*expr.getStart());
+            if (!startVal.isNumber())
+                throw RuntimeError("Slice start must be a number.", expr.getLine(), expr.getColumn());
+            startIdx = static_cast<long long>(startVal.asNumber());
+            if (startIdx < 0)
+                startIdx += len;
+            if (startIdx < 0)
+                startIdx = 0;
+            if (startIdx > len)
+                startIdx = len;
+        }
+
+        long long endIdx = len;
+        if (expr.getEnd())
+        {
+            PomeValue endVal = evaluateExpression(*expr.getEnd());
+            if (!endVal.isNumber())
+                throw RuntimeError("Slice end must be a number.", expr.getLine(), expr.getColumn());
+            endIdx = static_cast<long long>(endVal.asNumber());
+            if (endIdx < 0)
+                endIdx += len;
+            if (endIdx < 0)
+                endIdx = 0;
+            if (endIdx > len)
+                endIdx = len;
+        }
+
+        if (startIdx > endIdx)
+            startIdx = endIdx;
+
+        if (objectValue.isList())
+        {
+            std::vector<PomeValue> newElements;
+            auto list = objectValue.asList();
+            for (long long i = startIdx; i < endIdx; ++i)
+            {
+                newElements.push_back(list->elements[i]);
+            }
+            auto newList = gc_.allocate<PomeList>(std::move(newElements));
+            lastEvaluatedValue_ = PomeValue(newList);
+        }
+        else
+        {
+            std::string s = objectValue.asString();
+            std::string sub = s.substr(startIdx, endIdx - startIdx);
+            auto newStr = gc_.allocate<PomeString>(sub);
+            lastEvaluatedValue_ = PomeValue(newStr);
+        }
+    }
+
     void Interpreter::visit(TernaryExpr &expr)
     {
         PomeValue condition = evaluateExpression(*expr.getCondition());
@@ -646,6 +798,17 @@ namespace Pome
         {
             lastEvaluatedValue_ = evaluateExpression(*expr.getElseExpr());
         }
+    }
+
+    void Interpreter::visit(FunctionExpr &expr)
+    {
+        auto pomeFunc = gc_.allocate<PomeFunction>();
+        pomeFunc->name = expr.getName();
+        pomeFunc->parameters = expr.getParams();
+        pomeFunc->body = &(expr.getBody());
+        pomeFunc->closureEnv = currentEnvironment_;
+
+        lastEvaluatedValue_ = PomeValue(pomeFunc);
     }
 
     void Interpreter::visit(ThisExpr &expr)
@@ -673,7 +836,7 @@ namespace Pome
         }
         else
         {
-            value = PomeValue(std::monostate{}); 
+            value = PomeValue(std::monostate{});
         }
         currentEnvironment_->define(stmt.getName(), value);
     }
@@ -696,23 +859,37 @@ namespace Pome
         {
             PomeValue objectValue = evaluateExpression(*targetIndex->getObject());
             RootGuard objGuard(gc_, objectValue.asObject());
-            
+
             PomeValue indexValue = evaluateExpression(*targetIndex->getIndex());
             RootGuard indexGuard(gc_, indexValue.asObject());
 
             if (objectValue.isList())
             {
                 if (!indexValue.isNumber())
-                     throw RuntimeError("List assignment index must be a number.", stmt.getLine(), stmt.getColumn());
+                    throw RuntimeError("List assignment index must be a number.", stmt.getLine(), stmt.getColumn());
 
                 auto list = objectValue.asList();
                 double idxDouble = indexValue.asNumber();
                 long long idx = static_cast<long long>(idxDouble);
 
-                if (idx < 0 || idx >= static_cast<long long>(list->elements.size()))
-                     throw RuntimeError("List assignment index out of bounds.", stmt.getLine(), stmt.getColumn());
+                if (idx < 0)
+                    throw RuntimeError("List assignment index cannot be negative.", stmt.getLine(), stmt.getColumn());
 
-                list->elements[idx] = value;
+                if (idx >= static_cast<long long>(list->elements.size()))
+                {
+                    if (idx == static_cast<long long>(list->elements.size()))
+                    {
+                        list->elements.push_back(value);
+                    }
+                    else
+                    {
+                        throw RuntimeError("List assignment index out of bounds (can only append to end).", stmt.getLine(), stmt.getColumn());
+                    }
+                }
+                else
+                {
+                    list->elements[idx] = value;
+                }
             }
             else if (objectValue.isTable())
             {
@@ -728,17 +905,17 @@ namespace Pome
         {
             PomeValue objectValue = evaluateExpression(*targetMember->getObject());
             RootGuard objGuard(gc_, objectValue.asObject());
-            
+
             if (objectValue.isTable())
             {
                 auto table = objectValue.asTable();
-                PomeString* keyStr = gc_.allocate<PomeString>(targetMember->getMember());
+                PomeString *keyStr = gc_.allocate<PomeString>(targetMember->getMember());
                 PomeValue key(keyStr);
                 table->elements[key] = value;
             }
             else if (objectValue.isInstance())
             {
-                PomeInstance* instance = objectValue.asInstance();
+                PomeInstance *instance = objectValue.asInstance();
                 instance->set(targetMember->getMember(), value);
             }
             else
@@ -756,13 +933,13 @@ namespace Pome
     {
         PomeValue condition = evaluateExpression(*stmt.getCondition());
 
-        Environment* previousEnvironment = currentEnvironment_;
+        Environment *previousEnvironment = currentEnvironment_;
         currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
         try
         {
             if (condition.asBool())
-            { 
+            {
                 for (const auto &s : stmt.getThenBranch())
                 {
                     executeStatement(*s);
@@ -778,16 +955,16 @@ namespace Pome
         }
         catch (const ReturnException &e)
         {
-            currentEnvironment_ = previousEnvironment; 
+            currentEnvironment_ = previousEnvironment;
             throw;
         }
 
-        currentEnvironment_ = previousEnvironment; 
+        currentEnvironment_ = previousEnvironment;
     }
 
     void Interpreter::visit(WhileStmt &stmt)
     {
-        Environment* previousEnvironment = currentEnvironment_;
+        Environment *previousEnvironment = currentEnvironment_;
         currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
         try
@@ -802,16 +979,16 @@ namespace Pome
         }
         catch (const ReturnException &e)
         {
-            currentEnvironment_ = previousEnvironment; 
+            currentEnvironment_ = previousEnvironment;
             throw;
         }
 
-        currentEnvironment_ = previousEnvironment; 
+        currentEnvironment_ = previousEnvironment;
     }
 
     void Interpreter::visit(ForStmt &stmt)
     {
-        Environment* previousEnvironment = currentEnvironment_;
+        Environment *previousEnvironment = currentEnvironment_;
         currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
         try
@@ -832,7 +1009,7 @@ namespace Pome
                     }
                 }
 
-                Environment* savedEnv = currentEnvironment_;
+                Environment *savedEnv = currentEnvironment_;
                 currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
                 try
@@ -857,18 +1034,18 @@ namespace Pome
         }
         catch (const ReturnException &e)
         {
-            currentEnvironment_ = previousEnvironment; 
+            currentEnvironment_ = previousEnvironment;
             throw;
         }
 
-        currentEnvironment_ = previousEnvironment; 
+        currentEnvironment_ = previousEnvironment;
     }
 
     void Interpreter::visit(ForEachStmt &stmt)
     {
         PomeValue iterableValue = evaluateExpression(*stmt.getIterable());
 
-        Environment* previousEnvironment = currentEnvironment_;
+        Environment *previousEnvironment = currentEnvironment_;
         currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
         try
@@ -880,7 +1057,7 @@ namespace Pome
                 {
                     currentEnvironment_->define(stmt.getVarName(), item);
 
-                    Environment* savedEnv = currentEnvironment_;
+                    Environment *savedEnv = currentEnvironment_;
                     currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
                     try
@@ -905,7 +1082,7 @@ namespace Pome
                 {
                     currentEnvironment_->define(stmt.getVarName(), pair.first);
 
-                    Environment* savedEnv = currentEnvironment_;
+                    Environment *savedEnv = currentEnvironment_;
                     currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
                     try
@@ -949,11 +1126,11 @@ namespace Pome
                 {
                     PomeValue item = callPomeFunction(nextMethod, {}, iteratorInstance);
                     if (item.isNil())
-                        break; 
+                        break;
 
                     currentEnvironment_->define(stmt.getVarName(), item);
 
-                    Environment* savedEnv = currentEnvironment_;
+                    Environment *savedEnv = currentEnvironment_;
                     currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
 
                     try
@@ -994,9 +1171,9 @@ namespace Pome
         }
         else
         {
-            returnValue = PomeValue(std::monostate{}); 
+            returnValue = PomeValue(std::monostate{});
         }
-        throw ReturnException(returnValue); 
+        throw ReturnException(returnValue);
     }
 
     void Interpreter::visit(ExpressionStmt &stmt)
@@ -1009,8 +1186,8 @@ namespace Pome
         auto pomeFunc = gc_.allocate<PomeFunction>();
         pomeFunc->name = stmt.getName();
         pomeFunc->parameters = stmt.getParams();
-        pomeFunc->body = &(stmt.getBody());         
-        pomeFunc->closureEnv = currentEnvironment_; 
+        pomeFunc->body = &(stmt.getBody());
+        pomeFunc->closureEnv = currentEnvironment_;
 
         currentEnvironment_->define(stmt.getName(), PomeValue(pomeFunc));
     }
@@ -1025,7 +1202,7 @@ namespace Pome
             pomeFunc->name = methodStmt->getName();
             pomeFunc->parameters = methodStmt->getParams();
             pomeFunc->body = &(methodStmt->getBody());
-            pomeFunc->closureEnv = currentEnvironment_; 
+            pomeFunc->closureEnv = currentEnvironment_;
 
             pomeClass->methods[pomeFunc->name] = pomeFunc;
         }
@@ -1037,7 +1214,7 @@ namespace Pome
     {
         std::string moduleName = stmt.getModuleName();
 
-        PomeModule* moduleObj = loadModule(moduleName);
+        PomeModule *moduleObj = loadModule(moduleName);
 
         currentEnvironment_->define(moduleName, PomeValue(moduleObj));
     }
@@ -1046,17 +1223,17 @@ namespace Pome
     {
         std::string moduleName = stmt.getModuleName();
 
-        PomeModule* moduleObj = loadModule(moduleName);
+        PomeModule *moduleObj = loadModule(moduleName);
 
         for (const auto &symbol : stmt.getSymbols())
         {
-            
+
             /**
              * We must create a PomeString to lookup.
              */
-            PomeString* symStr = gc_.allocate<PomeString>(symbol);
+            PomeString *symStr = gc_.allocate<PomeString>(symbol);
             PomeValue key(symStr);
-            
+
             if (moduleObj->exports.count(key))
             {
                 currentEnvironment_->define(symbol, moduleObj->exports[key]);
@@ -1067,7 +1244,7 @@ namespace Pome
             }
         }
     }
-    
+
     void Interpreter::visit(ExportStmt &stmt)
     {
         /**
@@ -1075,83 +1252,87 @@ namespace Pome
          */
         stmt.getStmt()->accept(*this);
 
-        std::string name;
+        std::string name; // Declare name here
+        PomeValue val;    // Declare val here
+
         if (auto v = dynamic_cast<VarDeclStmt *>(stmt.getStmt()))
         {
             name = v->getName();
+            val = currentEnvironment_->get(name); // Retrieve value from environment
         }
         else if (auto f = dynamic_cast<FunctionDeclStmt *>(stmt.getStmt()))
         {
             name = f->getName();
+            val = currentEnvironment_->get(name); // Retrieve value from environment
+        }
+        else if (auto c = dynamic_cast<ClassDeclStmt *>(stmt.getStmt())) // Handle ClassDeclStmt
+        {
+            name = c->getName();
+            val = currentEnvironment_->get(name); // Retrieve value from environment
         }
         else
         {
-            return;
+            return; // Should not happen with current parser if it gets a valid ExportStmt
         }
 
-        try
+        // Now that name and val are set, add to exports
+        if (!exportStack_.empty())
         {
-            PomeValue val = currentEnvironment_->get(name);
-            if (!exportStack_.empty())
+            try // Keep try/catch for allocation safety
             {
-                /**
-                 * Create key
-                 */
-                PomeString* keyStr = gc_.allocate<PomeString>(name);
+                PomeString *keyStr = gc_.allocate<PomeString>(name);
                 PomeValue key(keyStr);
-                
-                /**
-                 * Add to current exports
-                 */
+
                 exportStack_.back()->exports[key] = val;
             }
-        }
-        catch (const std::runtime_error &)
-        {
+            catch (const std::runtime_error &)
+            {
+                // Handle allocation errors or other issues during export
+            }
         }
     }
 
-    PomeModule* Interpreter::loadModule(const std::string &moduleName)
+    PomeModule *Interpreter::loadModule(const std::string &moduleName)
     {
         if (executedModules_.count(moduleName))
         {
             return executedModules_[moduleName];
         }
-        
+
         if (moduleName == "math")
         {
-            PomeModule* mod = StdLib::createMathModule(gc_);
+            PomeModule *mod = StdLib::createMathModule(gc_);
             executedModules_[moduleName] = mod;
             return mod;
         }
         if (moduleName == "io")
         {
-            PomeModule* mod = StdLib::createIOModule(gc_);
+            PomeModule *mod = StdLib::createIOModule(gc_);
             executedModules_[moduleName] = mod;
             return mod;
         }
         if (moduleName == "string")
         {
-            PomeModule* mod = StdLib::createStringModule(gc_);
+            PomeModule *mod = StdLib::createStringModule(gc_);
             executedModules_[moduleName] = mod;
             return mod;
         }
 
         std::shared_ptr<Program> program = importer_.import(moduleName);
-        
+
         /**
          * Prepare new module execution environment
          * Parent is global environment to access globals like 'print'
          */
-        Environment* moduleEnv = gc_.allocate<Environment>(globalEnvironment_);
-        PomeModule* moduleObj = gc_.allocate<PomeModule>();
-        
+        Environment *moduleEnv = gc_.allocate<Environment>(globalEnvironment_);
+        PomeModule *moduleObj = gc_.allocate<PomeModule>();
+
         executedModules_[moduleName] = moduleObj;
-        
-        Environment* previousEnvironment = currentEnvironment_;
+
+        Environment *previousEnvironment = currentEnvironment_;
         currentEnvironment_ = moduleEnv;
         exportStack_.push_back(moduleObj);
-        
+
         try
         {
             program->accept(*this);
@@ -1169,13 +1350,13 @@ namespace Pome
             executedModules_.erase(moduleName); // Remove partial module on error
             throw;
         }
-        
+
         currentEnvironment_ = previousEnvironment;
         exportStack_.pop_back();
-        
+
         return moduleObj;
     }
-    
+
     /**
      * --- Program visitor ---
      */
@@ -1199,7 +1380,7 @@ namespace Pome
          */
         if (left.isInstance())
         {
-            PomeInstance* instance = left.asInstance();
+            PomeInstance *instance = left.asInstance();
             std::string methodName;
             if (op == "+")
                 methodName = "__add__";
@@ -1233,6 +1414,28 @@ namespace Pome
             }
         }
 
+        // Logical AND and OR (short-circuiting)
+        if (op == "and")
+        {
+            // Root left while evaluating its truthiness to prevent GC if it's an object
+            RootGuard leftGuard(gc_, left.asObject());
+            if (!left.asBool())
+            { // Short-circuit if left is falsy
+                return left;
+            }
+            return right; // Return right operand's value
+        }
+        if (op == "or")
+        {
+            // Root left while evaluating its truthiness to prevent GC if it's an object
+            RootGuard leftGuard(gc_, left.asObject());
+            if (left.asBool())
+            { // Short-circuit if left is truthy
+                return left;
+            }
+            return right; // Return right operand's value
+        }
+
         /**
          * Number operations
          */
@@ -1259,6 +1462,10 @@ namespace Pome
                     throw std::runtime_error("Modulo by zero.");
                 return PomeValue(fmod(lVal, rVal));
             }
+            if (op == "^")
+            {
+                return PomeValue(std::pow(lVal, rVal));
+            }
             if (op == "==")
                 return PomeValue(lVal == rVal);
             if (op == "!=")
@@ -1274,13 +1481,27 @@ namespace Pome
         }
 
         /**
-         * String concatenation
+         * String concatenation (with implicit conversion for right operand if string is left operand)
          */
-        if (op == "+" && left.isString() && right.isString())
+        if (op == "+" && left.isString())
         {
-             PomeString* s = gc_.allocate<PomeString>(left.asString() + right.asString());
-             return PomeValue(s);
+            PomeString *s = gc_.allocate<PomeString>(left.asString() + right.toString());
+            return PomeValue(s);
         }
+
+        /**
+         * List concatenation
+         */
+        if (op == "+" && left.isList() && right.isList())
+        {
+            auto list1 = left.asList();
+            auto list2 = right.asList();
+            std::vector<PomeValue> newElements = list1->elements;
+            newElements.insert(newElements.end(), list2->elements.begin(), list2->elements.end());
+            auto newList = gc_.allocate<PomeList>(std::move(newElements));
+            return PomeValue(newList);
+        }
+
         /**
          * Equality for other types
          */
@@ -1300,7 +1521,7 @@ namespace Pome
          */
         if (operand.isInstance())
         {
-            PomeInstance* instance = operand.asInstance();
+            PomeInstance *instance = operand.asInstance();
             std::string methodName;
             if (op == "-")
                 methodName = "__neg__";
@@ -1325,11 +1546,11 @@ namespace Pome
             }
             throw std::runtime_error("Attempt to unary negate a non-number value.");
         }
-        if (op == "!")
+        if (op == "!" || op == "not")
         { // Logical NOT
             return PomeValue(!operand.asBool());
         }
         throw std::runtime_error("Unsupported unary operation: " + op);
     }
 
-} // namespace Pome
+} // namespace Pome}

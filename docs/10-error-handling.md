@@ -16,6 +16,7 @@ var y = 20;
 ```
 
 **Fix**: Add semicolons at the end of statements
+
 ```pome
 var x = 10;
 var y = 20;
@@ -30,6 +31,7 @@ fun test() {
 ```
 
 **Fix**: Match all opening braces with closing ones
+
 ```pome
 fun test() {
     print("fixed");
@@ -45,6 +47,7 @@ function add(a, b) {  // Error: 'function' is not valid
 ```
 
 **Fix**: Use correct keywords (e.g., `fun` instead of `function`)
+
 ```pome
 fun add(a, b) {
     return a + b;
@@ -62,6 +65,7 @@ print(unknownVariable);  // Error: undefined variable 'unknownVariable'
 ```
 
 **Fix**: Declare the variable first
+
 ```pome
 var unknownVariable = 10;
 print(unknownVariable);
@@ -75,6 +79,7 @@ print(person.name);  // Returns nil (no error, but value is nil)
 ```
 
 **Best practice**: Check for nil before using
+
 ```pome
 var person = {};
 if (person.name != nil) {
@@ -88,10 +93,13 @@ if (person.name != nil) {
 
 ```pome
 var items = [1, 2, 3];
-print(items[10]);  // Returns nil or error
+print(items[10]);  // Returns nil (out of bounds)
+print(items[-1]);  // Returns 3 (negative index accesses from end)
+print(items[-4]);  // Returns nil (out of bounds)
 ```
 
-**Fix**: Check array length
+**Fix**: Check array length or ensure index is valid.
+
 ```pome
 var items = [1, 2, 3];
 var index = 10;
@@ -106,13 +114,14 @@ if (index >= 0 and index < len(items)) {
 
 ```pome
 var text = "hello";
-print(text + 5);  // May cause error or unexpected coercion
+print(text + 5);  // Output: hello5 (Pome performs implicit string conversion)
 ```
 
-**Fix**: Ensure types match
+**Fix**: Ensure types match or convert explicitly
+
 ```pome
 var text = "hello";
-print(text + " 5");  // Converts to string concatenation
+print(text + " 5");  // Concatenate with a string
 ```
 
 #### Calling Non-Functions
@@ -123,6 +132,7 @@ x();  // Error: tried to call a non-function
 ```
 
 **Fix**: Only call variables that are functions
+
 ```pome
 var fn = fun() { print("I'm a function"); };
 fn();  // Correct
@@ -135,6 +145,7 @@ var result = 10 / 0;  // May cause error or return infinity
 ```
 
 **Fix**: Check for zero
+
 ```pome
 var divisor = 0;
 if (divisor != 0) {
@@ -165,10 +176,12 @@ fun calculateTotal(items) {
     return total;
 }
 
-var result = calculateTotal([1, 2, 3]);
+var myItems = [1, 2, 3];
+var result = calculateTotal(myItems);
 ```
 
 Output:
+
 ```
 DEBUG: calculateTotal called
 DEBUG: Processing item 0 : 1
@@ -229,8 +242,8 @@ fun divide(a, b) {
 }
 
 print(divide(10, 2));   // Output: 5
-print(divide(10, 0));   // Error message
-print(divide("10", 2)); // Error message
+print(divide(10, 0));   // Error message, returns nil
+print(divide("10", 2)); // Error message, returns nil
 ```
 
 ### Boundary Checking
@@ -266,9 +279,12 @@ fun processUser(user) {
     print("Processing user:", user.name);
 }
 
+var userEmpty = {};
+var userAlice = {name: "Alice"};
+
 processUser(nil);                    // Error message
-processUser({});                     // Error message
-processUser({name: "Alice"});        // Processing user: Alice
+processUser(userEmpty);              // Error message
+processUser(userAlice);              // Processing user: Alice
 ```
 
 ## Error Prevention Patterns
@@ -297,7 +313,8 @@ fun getUsername(user) {
     return user.profile.username;
 }
 
-var user1 = {profile: {username: "alice"}};
+var user1Profile = {username: "alice"};
+var user1 = {profile: user1Profile};
 var user2 = {profile: nil};
 var user3 = nil;
 
@@ -310,22 +327,24 @@ print(getUsername(user3));  // Output: Unknown
 
 ```pome
 fun loadConfiguration(filename) {
-    import io;
+    import io; // Semicolon added
     
-    var config = io.readFile(filename);
-    if (config == nil) {
-        print("Warning: could not load", filename, ", using defaults");
-        return {
+    var configContent = io.readFile(filename); // Semicolon added, use variable
+    if (configContent == nil) {
+        print("Warning: could not load", filename, ", using defaults"); // Semicolon added
+        var defaultConfig = { // Use variable for table literal
             timeout: 5000,
             retries: 3
-        };
+        }; // Semicolon added
+        return defaultConfig; // Semicolon added
     }
     
-    return config;
+    // Assuming configContent is parsed into a table somehow
+    return configContent; // Semicolon added
 }
 
-var config = loadConfiguration("config.txt");
-print("Timeout:", config.timeout);
+var config = loadConfiguration("config.txt"); // Semicolon added
+print("Timeout:", config.timeout); // Semicolon added
 ```
 
 ## Testing Your Code
@@ -352,6 +371,7 @@ assert(add(0, 0) == 0, "add(0, 0) should equal 0");
 ```
 
 Output:
+
 ```
 PASS: add(2, 3) should equal 5
 PASS: add(-1, 1) should equal 0
@@ -403,13 +423,22 @@ runTests(tests);
 ## Tips for Robust Code
 
 1. **Validate inputs early**: Check parameters before using them
+
    ```pome
-   fun process(data) {
-       if (data == nil or type(data) != "list") {
-           return nil;
-       }
-       // ... process data
-   }
+
+var myList = [1, 2, 3]; // Semicolon added
+fun process(data) {
+    if (data == nil or type(data) != "list") {
+        return nil; // Semicolon added
+    }
+    // ... process data
+    return "Processed"; // Dummy return, semicolon added
+}
+
+var myList = [1, 2, 3];
+print(process(nil));
+print(process(myList));
+
    ```
 
 2. **Use meaningful error messages**: Help users understand what went wrong
@@ -421,6 +450,7 @@ runTests(tests);
    ```
 
 3. **Test edge cases**: Consider boundary conditions
+
    ```pome
    assert(add(0, 0) == 0, "zero + zero");
    assert(add(-1, 1) == 0, "negative plus positive");
@@ -428,6 +458,7 @@ runTests(tests);
    ```
 
 4. **Log important decisions**: Track control flow
+
    ```pome
    if (retry_count < MAX_RETRIES) {
        print("Retrying...");
@@ -438,6 +469,7 @@ runTests(tests);
    ```
 
 5. **Isolate and test components**: Test functions independently
+
    ```pome
    fun testDoubleFunction() {
        assert(double(5) == 10, "double(5)");

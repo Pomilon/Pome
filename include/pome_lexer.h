@@ -38,6 +38,7 @@ namespace Pome
         MULTIPLY,
         DIVIDE,
         MODULO,
+        CARET, // ^ (Exponentiation)
         ASSIGN,
         EQ,
         NE,

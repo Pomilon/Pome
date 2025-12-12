@@ -34,6 +34,7 @@ Output: [VAR, IDENTIFIER("x"), ASSIGN, NUMBER(10), PLUS, NUMBER(5), SEMICOLON]
 ```
 
 **Responsibilities**:
+
 - Recognize keywords (`var`, `fun`, `if`, `class`, etc.)
 - Identify operators (`+`, `-`, `*`, `/`, `==`, etc.)
 - Extract literals (numbers, strings)
@@ -41,6 +42,7 @@ Output: [VAR, IDENTIFIER("x"), ASSIGN, NUMBER(10), PLUS, NUMBER(5), SEMICOLON]
 - Track line/column information for errors
 
 **Token Types** (from `pome_lexer.h`):
+
 - Keywords: `FUNCTION`, `IF`, `ELSE`, `WHILE`, `FOR`, etc.
 - Operators: `PLUS`, `MINUS`, `MULTIPLY`, `DIVIDE`, etc.
 - Literals: `NUMBER`, `STRING`, `TRUE`, `FALSE`, `NIL`
@@ -61,6 +63,7 @@ AST:        VarStatement {
 ```
 
 **Key Structures** (from `pome_ast.h`):
+
 - **Statements**: Control flow and declarations
   - `VarStatement`: Variable declaration
   - `ExpressionStatement`: Expression evaluation
@@ -96,12 +99,14 @@ AST Node → Evaluate → Update Environment → Return Value
 ```
 
 **Execution Model**:
+
 - Traverses AST nodes recursively
 - Maintains an environment for variable scope
 - Calls appropriate evaluation methods for each node type
 - Returns runtime values
 
 **Key Methods**:
+
 - `evaluate(statement)`: Execute a statement
 - `evaluateExpression(expression)`: Compute an expression value
 - `executeBlock(statements, environment)`: Run statements in a scope
@@ -113,6 +118,7 @@ AST Node → Evaluate → Update Environment → Return Value
 Pome values are represented by the `PomeValue` class hierarchy:
 
 **Value Types** (from `pome_value.h`):
+
 - **Primitives**:
   - Number: Double-precision floating point
   - String: UTF-8 encoded text
@@ -135,6 +141,7 @@ Pome values are represented by the `PomeValue` class hierarchy:
   - Module: Namespace of exported values
 
 **Object Base Class**:
+
 ```cpp
 class PomeObject {
 public:
@@ -157,6 +164,7 @@ Global Scope { x: 10, y: 20 }
 ```
 
 **Key Operations**:
+
 - `define(name, value)`: Create a new variable
 - `get(name)`: Retrieve a variable's value
 - `set(name, value)`: Update a variable's value
@@ -171,16 +179,19 @@ Global Scope { x: 10, y: 20 }
 Pome uses a **mark-and-sweep garbage collector**:
 
 **Algorithm**:
+
 1. **Mark Phase**: Traverse all reachable objects from root references, marking them
 2. **Sweep Phase**: Delete all unmarked objects
 
 **Root References**:
+
 - Global environment variables
 - Local environment variables in call stack
 - Object member variables
 - Collection elements
 
 **Triggering GC**:
+
 - Runs periodically or when memory pressure is high
 - Can be triggered manually (for debugging)
 
@@ -189,6 +200,7 @@ Pome uses a **mark-and-sweep garbage collector**:
 **Purpose**: Load and manage module dependencies
 
 **Process**:
+
 1. Parse `import` statement to get module path
 2. Load the `.pome` file
 3. Execute the module code in its own environment
@@ -196,6 +208,7 @@ Pome uses a **mark-and-sweep garbage collector**:
 5. Create a module namespace in the importing environment
 
 **Module Environment**:
+
 - Each module has its own scope
 - Only exported items are accessible to importers
 - Circular imports are prevented
@@ -205,11 +218,13 @@ Pome uses a **mark-and-sweep garbage collector**:
 **Purpose**: Provide built-in functions and modules
 
 **Built-in Functions**:
+
 - `print()`: Output to console
 - `len()`: Get collection length
 - `type()`: Get value type
 
 **Built-in Modules**:
+
 - **math**: Math functions and constants
 - **string**: String manipulation
 - **io**: File I/O operations
@@ -227,7 +242,7 @@ var result = add(5, 3);
 print(result);
 ```
 
-### Step-by-Step Execution:
+### Step-by-Step Execution
 
 1. **Lexer**:
    - Tokenizes the source code
@@ -249,6 +264,7 @@ print(result);
    - Executes print statement: Looks up `result`, prints "8"
 
 4. **Output**:
+
    ```
    8
    ```
@@ -267,12 +283,7 @@ val = PomeValue("str"); // Now a string
 
 ### Type Coercion
 
-When operations involve incompatible types, Pome attempts conversion:
-
-```
-"5" + 3 → "5" + "3" → "53"
-10 / 2.0 → 5.0
-```
+Pome does **not** perform automatic type coercion. When operations involve incompatible types (for example, adding a number and a string), the interpreter does not implicitly convert values; such operations should be avoided or handled by explicit conversion in the program or standard library. This design keeps behavior predictable and avoids subtle bugs from implicit conversions.
 
 ## Operator Implementation
 
@@ -282,11 +293,16 @@ Handled by `evaluateBinaryExpression()` in the interpreter:
 
 ```cpp
 if (op == "+") {
-    if (left.type == STRING || right.type == STRING) {
-        return PomeValue(toString(left) + toString(right));
-    } else {
-        return PomeValue(toNumber(left) + toNumber(right));
+    // Concatenate if both operands are strings
+    if (left.type == STRING && right.type == STRING) {
+        return PomeValue(left.asString() + right.asString());
     }
+    // Add if both operands are numbers
+    if (left.type == NUMBER && right.type == NUMBER) {
+        return PomeValue(left.asNumber() + right.asNumber());
+    }
+    // Otherwise, report a runtime type error (no implicit coercion)
+    throw RuntimeError("Type error: unsupported operands for +");
 }
 ```
 
@@ -337,6 +353,7 @@ var dog = Dog("Buddy");
 ```
 
 **Process**:
+
 1. `Dog("Buddy")` calls the class as a function
 2. Interpreter creates a new instance object
 3. Looks up `init` method on the class
@@ -404,18 +421,21 @@ Expression* parseBinary(int minPrecedence) {
     auto left = parsePrimary();
     while (precedence(peek()) >= minPrecedence) {
         auto op = advance();
-        auto right = parseBinary(precedence(op) + 1);
+        auto right = parseBinary(precedence(op) + (isRightAssociative(op) ? 0 : 1));
         left = createBinaryExpression(left, op, right);
     }
     return left;
 }
 ```
 
+(Note: Pome's implementation uses left-associativity for most binary operators, including `^` currently).
+
 ## Performance Considerations
 
 ### Interpretation Overhead
 
 Pome is an interpreted language, so it's slower than compiled languages. For performance-critical code:
+
 - Consider algorithmic improvements
 - Minimize function calls in tight loops
 - Use built-in functions (they're C++)
@@ -423,6 +443,7 @@ Pome is an interpreted language, so it's slower than compiled languages. For per
 ### Memory Usage
 
 Garbage collection pauses can occur. For latency-sensitive applications:
+
 - Be mindful of large data structures
 - Avoid creating many short-lived objects
 
@@ -431,6 +452,7 @@ Garbage collection pauses can occur. For latency-sensitive applications:
 ### Adding Native Functions
 
 1. Define function in `pome_stdlib.cpp`:
+
 ```cpp
 PomeValue nativeMyFunc(const std::vector<PomeValue>& args) {
     // Implementation
@@ -439,6 +461,7 @@ PomeValue nativeMyFunc(const std::vector<PomeValue>& args) {
 ```
 
 2. Register in environment:
+
 ```cpp
 env->define("myFunc", PomeValue(nativeMyFunc));
 ```

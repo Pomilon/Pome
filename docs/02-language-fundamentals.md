@@ -19,6 +19,7 @@ Variables in Pome are **dynamically typed** - you don't specify a type when decl
 ### Variable Naming
 
 Variable names must follow these rules:
+
 - Start with a letter (a-z, A-Z) or underscore (_)
 - Contain only letters, digits (0-9), and underscores
 - Are case-sensitive (`myVar` and `myvar` are different)
@@ -73,6 +74,7 @@ Line 3";
 ```
 
 **Escape sequences** are supported:
+
 - `\"` - Double quote
 - `\\` - Backslash
 - `\n` - Newline
@@ -115,22 +117,11 @@ var result;  // Implicitly nil
 print(result);  // Output: nil
 ```
 
-## Type Coercion
+## Type Safety
 
-When Pome encounters mixed types in operations, it attempts to coerce values:
+Pome does **not** perform automatic type coercion. Operations between mismatched types (for example, adding a number and a string) will not be implicitly converted and may result in a runtime error or undefined behavior. Always ensure values are of the expected type before performing operations.
 
-```pome
-var num = 10;
-var str = "5";
-print(num + str);  // Output: 15 (string coerced to number)
-```
-
-However, not all coercions are possible:
-
-```pome
-var bool = true;
-print(bool + 10);  // May cause an error
-```
+If you need to combine values of different kinds, convert them explicitly using appropriate utility functions or the standard library (for example, convert numbers to strings before concatenation, or parse strings to numbers before arithmetic).
 
 ## Comments
 
@@ -160,16 +151,19 @@ print(a - b);      // Subtraction: 7
 print(a * b);      // Multiplication: 30
 print(a / b);      // Division: 3.333...
 print(a % b);      // Modulo: 1
+print(a ^ b);      // Exponentiation: 1000
 ```
 
 **Operator precedence** (from highest to lowest):
+
 1. Unary (`-`, `!`)
-2. Multiplication, Division, Modulo
-3. Addition, Subtraction
-4. Comparison
-5. Logical AND
-6. Logical OR
-7. Assignment
+2. Exponentiation (`^`)
+3. Multiplication, Division, Modulo
+4. Addition, Subtraction
+5. Comparison
+6. Logical AND
+7. Logical OR
+8. Assignment
 
 ### String Concatenation
 
@@ -278,8 +272,8 @@ if (nil) { print("Nil is truthy"); }          // Does not print
 if (false) { print("False is truthy"); }      // Does not print
 ```
 
-Falsy values: `0`, `""` (empty string), `nil`, `false`  
-Truthy values: Everything else
+Falsy values: `0`, `nil`, `false`  
+Truthy values: Everything else (including empty strings)
 
 ## Constants
 

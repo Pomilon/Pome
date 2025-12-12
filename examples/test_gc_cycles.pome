@@ -1,0 +1,21 @@
+print("Initial GC usage:", gc_count());
+
+fun createCycle() {
+    var a = {};
+    var b = {};
+    
+    a.next = b;
+    b.next = a;
+}
+
+// Create 5000 cycles
+var i = 0;
+while (i < 5000) {
+    createCycle();
+    i = i + 1;
+}
+
+print("Cycles created. Collecting...");
+gc_collect();
+
+print("Final GC usage (Should be close to initial):", gc_count());

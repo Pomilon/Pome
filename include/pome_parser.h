@@ -24,10 +24,13 @@ namespace Pome
             LOWEST,
             ASSIGN,       // =
             TERNARY,      // ? :
+            LOGICAL_OR,   // or
+            LOGICAL_AND,  // and
             EQUALS,       // == !=
             LESSGREATER,  // < > <= >=
             SUM,          // + -
             PRODUCT,      // * / %
+            EXPONENT,     // ^
             PREFIX,       // - ! (unary)
             CALL,         // ()
             MEMBER_ACCESS // . (dot operator)
@@ -55,6 +58,7 @@ namespace Pome
         std::unique_ptr<Expression> parseMemberAccessExpression(std::unique_ptr<Expression> object); // New method for member access
         std::unique_ptr<Expression> parseIndexExpression(std::unique_ptr<Expression> object);        // New method for index access
         std::unique_ptr<Expression> parseTernaryExpression(std::unique_ptr<Expression> condition);   // Added for ternary
+        std::unique_ptr<Expression> parseFunctionExpression();                                       // Added for anonymous functions
         std::unique_ptr<Expression> parseListLiteral();                                              // New method for list literals
         std::unique_ptr<Expression> parseTableLiteral();                                             // New method for table literals
 

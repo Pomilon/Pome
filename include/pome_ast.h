@@ -39,8 +39,10 @@ namespace Pome
             LIST_EXPR,
             TABLE_EXPR,
             INDEX_EXPR,   // New node types for lists and tables
+            SLICE_EXPR,   // New node type for slicing
             TERNARY_EXPR, // New node type for ternary operator
             THIS_EXPR,    // New node type for 'this'
+            FUNCTION_EXPR, // New node type for function expressions
             /**
              * Specific statements
              */
@@ -254,6 +256,22 @@ namespace Pome
         std::unique_ptr<Expression> index_;
     };
 
+    class SliceExpr : public Expression
+    {
+    public:
+        SliceExpr(std::unique_ptr<Expression> object, std::unique_ptr<Expression> start, std::unique_ptr<Expression> end, int line, int col)
+            : Expression(SLICE_EXPR, line, col), object_(std::move(object)), start_(std::move(start)), end_(std::move(end)) {}
+        Expression *getObject() const { return object_.get(); }
+        Expression *getStart() const { return start_.get(); }
+        Expression *getEnd() const { return end_.get(); }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::unique_ptr<Expression> object_;
+        std::unique_ptr<Expression> start_;
+        std::unique_ptr<Expression> end_;
+    };
+
     class TernaryExpr : public Expression
     {
     public:
@@ -268,6 +286,23 @@ namespace Pome
         std::unique_ptr<Expression> condition_;
         std::unique_ptr<Expression> thenExpr_;
         std::unique_ptr<Expression> elseExpr_;
+    };
+
+    class FunctionExpr : public Expression
+    {
+    public:
+        FunctionExpr(const std::string &name, std::vector<std::string> params,
+                     std::vector<std::unique_ptr<Statement>> body, int line, int col)
+            : Expression(FUNCTION_EXPR, line, col), name_(name), params_(std::move(params)), body_(std::move(body)) {}
+        const std::string &getName() const { return name_; }
+        const std::vector<std::string> &getParams() const { return params_; }
+        const std::vector<std::unique_ptr<Statement>> &getBody() const { return body_; }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::string name_;
+        std::vector<std::string> params_;
+        std::vector<std::unique_ptr<Statement>> body_;
     };
 
     /**
@@ -502,7 +537,9 @@ namespace Pome
         virtual void visit(ListExpr &expr) = 0;
         virtual void visit(TableExpr &expr) = 0;
         virtual void visit(IndexExpr &expr) = 0;
+        virtual void visit(SliceExpr &expr) = 0; // Added
         virtual void visit(TernaryExpr &expr) = 0;
+        virtual void visit(FunctionExpr &expr) = 0;
 
         /**
          * Statements
@@ -540,7 +577,9 @@ namespace Pome
     inline void ListExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void TableExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void IndexExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void SliceExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
     inline void TernaryExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void FunctionExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
 
     inline void VarDeclStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void AssignStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }

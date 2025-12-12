@@ -15,33 +15,39 @@ Before installing Pome, ensure you have:
 ### Building from Source
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/Pomilon/Pome.git
    cd Pome
    ```
 
 2. **Create a build directory**:
+
    ```bash
    mkdir build
    cd build
    ```
 
 3. **Configure with CMake**:
+
    ```bash
    cmake ..
    ```
 
 4. **Build the project**:
+
    ```bash
    make
    ```
 
    On Windows with MSVC:
+
    ```bash
    cmake --build .
    ```
 
 5. **Verify installation**:
+
    ```bash
    ./pome --version
    ```
@@ -63,6 +69,7 @@ Run it:
 ```
 
 Expected output:
+
 ```
 Hello, World!
 ```
@@ -124,20 +131,26 @@ The repository includes examples in the `examples/` directory:
 ## Troubleshooting
 
 ### CMake not found
+
 Install CMake:
+
 - **Ubuntu/Debian**: `sudo apt-get install cmake`
 - **macOS**: `brew install cmake`
-- **Windows**: Download from https://cmake.org/download/
+- **Windows**: Download from <https://cmake.org/download/>
 
 ### Compiler not found
+
 Install a C++17 compiler:
+
 - **Ubuntu/Debian**: `sudo apt-get install g++ cmake`
 - **macOS**: `xcode-select --install`
 - **Windows**: Visual Studio Community (includes MSVC)
 
 ### Build errors
+
 1. Ensure you have C++17 or later
 2. Try cleaning and rebuilding:
+
    ```bash
    cd build
    rm -rf *
@@ -146,6 +159,7 @@ Install a C++17 compiler:
    ```
 
 ### Script won't run
+
 - Check that the file path is correct
 - Verify the file has `.pome` extension
 - Check for syntax errors (see [Language Fundamentals](02-language-fundamentals.md))

@@ -15,6 +15,7 @@ print("Multiple", "values", "here");
 ```
 
 Output:
+
 ```
 Hello
 Value: 42
@@ -28,13 +29,16 @@ Multiple arguments are separated by spaces.
 Get the length of a collection or string.
 
 ```pome
-print(len([1, 2, 3]));        // Output: 3
+var myList = [1, 2, 3];
+print(len(myList));        // Output: 3
 print(len("hello"));           // Output: 5
-print(len({a: 1, b: 2}));     // Output: 2
-print(len(nil));               // May return 0 or error
+var myTable = {a: 1, b: 2};
+print(len(myTable));     // Output: 2
+print(len(nil));               // Throws runtime error
 ```
 
 Works with:
+
 - Lists: Number of elements
 - Strings: Number of characters
 - Tables: Number of key-value pairs
@@ -44,14 +48,20 @@ Works with:
 Get the type of a value.
 
 ```pome
+var myList = [1, 2];
+var myTable = {a: 1};
+fun dummy_func() {}
+class DummyClass {}
+var myInstance = DummyClass();
+
 print(type(42));               // Output: number
 print(type("text"));           // Output: string
 print(type(true));             // Output: boolean
 print(type(nil));              // Output: nil
-print(type([1, 2]));           // Output: list
-print(type({a: 1}));           // Output: table
-print(type(fun() {}));         // Output: function
-print(type(MyClass()));        // Output: instance
+print(type(myList));           // Output: list
+print(type(myTable));          // Output: table
+print(type(dummy_func));       // Output: function
+print(type(myInstance));       // Output: instance
 ```
 
 ## Math Module
@@ -103,6 +113,7 @@ print(string.sub(text, 6, 11));   // Output: World
 ```
 
 Parameters:
+
 - `str`: The source string
 - `start`: Starting index (0-based)
 - `end`: Ending index (exclusive)
@@ -138,6 +149,7 @@ if (success) {
 ```
 
 Parameters:
+
 - `path`: File path to write to
 - `content`: Content to write
 
@@ -397,9 +409,10 @@ fun safeSum(values) {
     return total;
 }
 
-print(safeSum([1, 2, 3]));      // Output: 6
-print(safeSum([1, "two", 3]));  // Output: 4 (skips "two")
-print(safeSum("not a list"));   // Output: nil
+var myString = "not a list";
+print(safeSum(myList));      // Output: 6
+print(safeSum(mixedList));  // Output: 4 (skips "two")
+print(safeSum(myString));   // Output: nil
 ```
 
 ## Performance Considerations
@@ -409,17 +422,18 @@ print(safeSum("not a list"));   // Output: nil
 Avoid repeated concatenation in loops:
 
 ```pome
-// Less efficient
-var result = [];
-for (var i = 0; i < 1000; i = i + 1) {
-    result = result + [i];  // Creates new list each time
-}
+// Less efficient (and not supported with '+' for lists anyway)
+// var result = [];
+// for (var i = 0; i < 1000; i = i + 1) {
+//     result = result + [i];  // Creates new list each time, also list concatenation is not supported
+// }
 
-// Better approach with direct assignment
+// Pome supports dynamic list resizing when assigning to the index equal to the length (appending).
 var result = [];
-for (var i = 0; i < 1000; i = i + 1) {
-    result[i] = i;  // Modifies in place
+for (var i = 0; i < 5; i = i + 1) {
+    result[i] = i;  // Appends to the list
 }
+print(result); // Output: [0, 1, 2, 3, 4]
 ```
 
 ### String Building

@@ -1,7 +1,0 @@
-from test_modules.test_module import magic, getMagic;
-
-print(magic);
-print(getMagic());
-
-// This should fail if uncommented
-// print(secret); 

@@ -20,9 +20,12 @@ namespace Pome
         {TokenType::MULTIPLY, Parser::PRODUCT},
         {TokenType::DIVIDE, Parser::PRODUCT},
         {TokenType::MODULO, Parser::PRODUCT},
+        {TokenType::CARET, Parser::EXPONENT},         // Added for exponentiation
         {TokenType::DOT, Parser::MEMBER_ACCESS},      // Added for member access
         {TokenType::LBRACKET, Parser::MEMBER_ACCESS}, // Added for index access (same precedence as dot)
         {TokenType::QUESTION, Parser::TERNARY},       // Added for ternary operator
+        {TokenType::AND, Parser::LOGICAL_AND},
+        {TokenType::OR, Parser::LOGICAL_OR},
         /**
          * ASSIGN is not here, as assignment will be handled as a statement or specific expression context
          */
@@ -221,6 +224,10 @@ namespace Pome
         {
             return parseTableLiteral();
         }
+        case TokenType::FUNCTION:
+        {
+            return parseFunctionExpression();
+        }
         default:
             error("Unexpected token in expression: " + currentToken_.debugString());
             return nullptr;
@@ -322,14 +329,61 @@ namespace Pome
          */
         nextToken(); // Consume LBRACKET. currentToken_ is now start of index expression
 
-        auto index = parseExpression();
-        if (!index)
-            return nullptr;
+        std::unique_ptr<Expression> start = nullptr;
+        std::unique_ptr<Expression> end = nullptr;
+        bool isSlice = false;
+
+        // Check for [:end]
+        if (currentToken_.type == TokenType::COLON)
+        {
+            isSlice = true;
+            // currentToken_ is COLON. peekToken_ is start of end expr OR RBRACKET.
+            if (peekToken_.type != TokenType::RBRACKET)
+            {
+                nextToken(); // Move to start of end expr
+                end = parseExpression();
+                if (!end)
+                    return nullptr;
+            }
+            else
+            {
+                // buh
+            }
+        }
+        else
+        {
+            start = parseExpression();
+            if (!start)
+                return nullptr;
+
+            // Check if next token is COLON -> [start:end]
+            if (peekToken_.type == TokenType::COLON)
+            {
+                isSlice = true;
+                nextToken(); // Move to COLON (currentToken_ was last token of start)
+                // Now currentToken_ is COLON. peekToken_ is start of end expr or RBRACKET.
+
+                if (peekToken_.type != TokenType::RBRACKET)
+                {
+                    nextToken(); // Move to start of end expr
+                    end = parseExpression();
+                    if (!end)
+                        return nullptr;
+                }
+            }
+        }
 
         if (!expect(TokenType::RBRACKET))
             return nullptr; // expect consumes RBRACKET
 
-        return std::make_unique<IndexExpr>(std::move(object), std::move(index), line, col);
+        if (isSlice)
+        {
+            return std::make_unique<SliceExpr>(std::move(object), std::move(start), std::move(end), line, col);
+        }
+        else
+        {
+            return std::make_unique<IndexExpr>(std::move(object), std::move(start), line, col);
+        }
     }
 
     std::unique_ptr<Expression> Parser::parseTernaryExpression(std::unique_ptr<Expression> condition)
@@ -363,6 +417,68 @@ namespace Pome
         return std::make_unique<TernaryExpr>(std::move(condition), std::move(thenExpr), std::move(elseExpr), line, col);
     }
 
+    std::unique_ptr<Expression> Parser::parseFunctionExpression()
+    {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+
+        // currentToken_ is FUNCTION
+        nextToken(); // Consume FUNCTION
+
+        std::string funcName = "";
+        if (currentToken_.type == TokenType::IDENTIFIER)
+        {
+            funcName = currentToken_.value;
+            nextToken(); // Consume name
+        }
+
+        if (currentToken_.type != TokenType::LPAREN)
+        {
+            error("Expected '(' after function keyword/name, got " + currentToken_.debugString());
+            return nullptr;
+        }
+        nextToken(); // Consume '('
+
+        std::vector<std::string> params;
+        if (currentToken_.type != TokenType::RPAREN)
+        {
+            do
+            {
+                if (currentToken_.type != TokenType::IDENTIFIER)
+                {
+                    error("Expected parameter name, got " + currentToken_.debugString());
+                    return nullptr;
+                }
+                params.push_back(currentToken_.value);
+                nextToken(); // Consume parameter name
+            } while (currentToken_.type == TokenType::COMMA && (nextToken(), true));
+        }
+
+        if (currentToken_.type != TokenType::RPAREN)
+        {
+            error("Expected ')' after parameters, got " + currentToken_.debugString());
+            return nullptr;
+        }
+        nextToken(); // Consume ')'
+
+        if (currentToken_.type != TokenType::LBRACE)
+        {
+            error("Expected '{' for function body, got " + currentToken_.debugString());
+            return nullptr;
+        }
+        nextToken(); // Consume '{'
+
+        std::vector<std::unique_ptr<Statement>> body = parseBlockStatement();
+
+        if (currentToken_.type != TokenType::RBRACE)
+        {
+            error("Expected '}' after function body, got " + currentToken_.debugString());
+            return nullptr;
+        }
+
+        return std::make_unique<FunctionExpr>(funcName, std::move(params), std::move(body), line, col);
+    }
+
     std::unique_ptr<Expression> Parser::parseListLiteral()
     {
         int line = currentToken_.line;
@@ -370,29 +486,27 @@ namespace Pome
         std::vector<std::unique_ptr<Expression>> elements;
         nextToken(); // Consume LBRACKET. currentToken_ is now first element start or RBRACKET.
 
-        if (currentToken_.type != TokenType::RBRACKET)
+        if (currentToken_.type != TokenType::RBRACKET) // If the list is NOT empty
         {
-            /**
-             * Parse first element
-             */
-            auto element = parseExpression();
-            if (!element)
-                return nullptr;
-            elements.push_back(std::move(element));
-
-            while (peekToken_.type == TokenType::COMMA)
+            do
             {
-                nextToken(); // Consume last token of expr. currentToken_ is COMMA.
-                nextToken(); // Consume COMMA. currentToken_ is start of next expr.
-                element = parseExpression();
+                auto element = parseExpression();
                 if (!element)
                     return nullptr;
                 elements.push_back(std::move(element));
-            }
+
+            } while (peekToken_.type == TokenType::COMMA && (nextToken(), nextToken(), true)); // Consume currentToken (element) and then COMMA
+            // After this loop, currentToken_ is the last element, peekToken_ is RBRACKET
+            nextToken(); // Consume the last element. Now currentToken_ is RBRACKET.
         }
 
-        if (!expect(TokenType::RBRACKET))
+        // At this point, currentToken_ should be RBRACKET (either because list was empty, or consumed after loop)
+        if (currentToken_.type != TokenType::RBRACKET)
+        {
+            error("Expected RBRACKET after list, got " + currentToken_.debugString());
             return nullptr;
+        }
+        // DO NOT Consume RBRACKET.
 
         return std::make_unique<ListExpr>(std::move(elements), line, col);
     }
@@ -402,65 +516,62 @@ namespace Pome
         int line = currentToken_.line;
         int col = currentToken_.column;
         std::vector<TableExpr::Entry> entries;
-        nextToken(); // Consume LBRACE.
+        nextToken(); // Consume LBRACE. currentToken_ is now token after LBRACE.
 
-        if (currentToken_.type != TokenType::RBRACE)
+        if (currentToken_.type != TokenType::RBRACE) // If the table is NOT empty
         {
             do
             {
-                std::unique_ptr<Expression> key = nullptr;
-                int keyLine = currentToken_.line;
-                int keyCol = currentToken_.column;
-
-                if (currentToken_.type == TokenType::IDENTIFIER || currentToken_.type == TokenType::STRING)
+                // Parse Key
+                std::unique_ptr<Expression> key;
+                if (currentToken_.type == TokenType::IDENTIFIER || currentToken_.type == TokenType::STRING || currentToken_.type == TokenType::NUMBER)
                 {
-                    key = std::make_unique<StringExpr>(currentToken_.value, keyLine, keyCol);
-                }
-                else if (currentToken_.type == TokenType::LBRACKET)
-                {
-                    nextToken();
-                    key = parseExpression();
-                    nextToken(); // Consume the value of the key expression
-                    if (currentToken_.type != TokenType::RBRACKET)
-                        return nullptr; // Manual check instead of expect
-                }
-                else if (currentToken_.type == TokenType::NUMBER)
-                {
-                    key = std::make_unique<NumberExpr>(std::stod(currentToken_.value), keyLine, keyCol);
+                    if (currentToken_.type == TokenType::STRING)
+                    {
+                        key = std::make_unique<StringExpr>(currentToken_.value, currentToken_.line, currentToken_.column);
+                    }
+                    else if (currentToken_.type == TokenType::NUMBER)
+                    {
+                        key = std::make_unique<NumberExpr>(std::stod(currentToken_.value), currentToken_.line, currentToken_.column);
+                    }
+                    else
+                    { // IDENTIFIER
+                        key = std::make_unique<StringExpr>(currentToken_.value, currentToken_.line, currentToken_.column);
+                    }
+                    nextToken(); // Consume the key token. currentToken_ is now COLON, peekToken_ is value.
                 }
                 else
                 {
-                    error("Expected identifier, string, or [expression] as table key.");
+                    error("Expected identifier, string, or number as table key, got " + currentToken_.debugString());
                     return nullptr;
                 }
 
-                /**
-                 * --- 2. Handle Colon ---
-                 */
-                if (!expect(TokenType::COLON))
+                if (currentToken_.type != TokenType::COLON)
+                { // Manually check for COLON in currentToken_
+                    error("Expected COLON after table key, got " + currentToken_.debugString());
                     return nullptr;
-                nextToken(); // CONSUME COLON (Fix #1)
+                }
+                nextToken(); // Consume COLON. currentToken_ is COLON, peekToken_ is value.
 
-                /**
-                 * --- 3. Parse Value ---
-                 */
-                auto value = parseExpression();
+                auto value = parseExpression(); // Parses value. currentToken_ becomes value's last token, peekToken_ becomes next token (COMMA or RBRACE).
                 if (!value)
                     return nullptr;
 
-                nextToken(); // CONSUME VALUE (Fix #2: This moves currentToken to Comma or RBrace)
-
                 entries.push_back({std::move(key), std::move(value)});
 
-            } while (currentToken_.type == TokenType::COMMA && (nextToken(), true));
+            } while (peekToken_.type == TokenType::COMMA && (nextToken(), nextToken(), true)); // Consume currentToken (value) and then COMMA
+
+            // After this loop, currentToken_ is the last value, peekToken_ is RBRACE.
+            nextToken(); // Consume the last value. Now currentToken_ is RBRACE.
         }
 
+        // At this point, currentToken_ should be RBRACE (either because table was empty, or consumed after loop)
         if (currentToken_.type != TokenType::RBRACE)
         {
-            error("Expected '}' after table entries, got " + currentToken_.debugString());
+            error("Expected RBRACE after table, got " + currentToken_.debugString());
             return nullptr;
         }
-        nextToken(); // Consume RBRACE
+        // DO NOT Consume RBRACE.
 
         return std::make_unique<TableExpr>(std::move(entries), line, col);
     }
@@ -575,36 +686,62 @@ namespace Pome
 
         if (!expect(TokenType::RPAREN))
             return nullptr;
-        if (!expect(TokenType::LBRACE))
-            return nullptr;
 
-        nextToken(); // Consume LBRACE
-        auto thenBranch = parseBlockStatement();
-
-        if (currentToken_.type != TokenType::RBRACE)
+        std::vector<std::unique_ptr<Statement>> thenBranch;
+        if (peekToken_.type == TokenType::LBRACE)
         {
-            error("Expected RBRACE after 'then' block, got " + currentToken_.debugString());
-            return nullptr;
+            nextToken(); // Consume LBRACE (peekToken -> currentToken)
+            // currentToken_ is LBRACE
+            nextToken(); // Move to first token of block
+            thenBranch = parseBlockStatement();
+
+            if (currentToken_.type != TokenType::RBRACE)
+            {
+                error("Expected RBRACE after 'then' block, got " + currentToken_.debugString());
+                return nullptr;
+            }
+            nextToken(); // Consume RBRACE
         }
-        nextToken(); // Consume RBRACE
+        else
+        {
+            nextToken(); // Move past RPAREN to start of statement
+            auto stmt = parseStatement();
+            if (!stmt)
+                return nullptr;
+            thenBranch.push_back(std::move(stmt));
+        }
 
         std::vector<std::unique_ptr<Statement>> elseBranch;
         if (currentToken_.type == TokenType::ELSE)
         {
-            nextToken(); // Consume ELSE. currentToken_ is LBRACE
-            if (currentToken_.type != TokenType::LBRACE)
+            nextToken(); // Consume ELSE
+
+            if (currentToken_.type == TokenType::IF) // Handle 'else if'
             {
-                error("Expected LBRACE after 'else', got " + currentToken_.debugString());
-                return nullptr;
+                // If it's 'else if', parse another IfStatement as the else branch
+                auto nestedIf = parseIfStatement(); // Recursively parse the 'if' part
+                if (!nestedIf)
+                    return nullptr;
+                elseBranch.push_back(std::move(nestedIf)); // Add the nested if as the else branch
             }
-            nextToken(); // Consume LBRACE
-            elseBranch = parseBlockStatement();
-            if (currentToken_.type != TokenType::RBRACE)
+            else if (currentToken_.type == TokenType::LBRACE) // Regular 'else' block
             {
-                error("Expected RBRACE after 'else' block, got " + currentToken_.debugString());
-                return nullptr;
+                nextToken(); // Consume LBRACE
+                elseBranch = parseBlockStatement();
+                if (currentToken_.type != TokenType::RBRACE)
+                {
+                    error("Expected RBRACE after 'else' block, got " + currentToken_.debugString());
+                    return nullptr;
+                }
+                nextToken(); // Consume RBRACE
             }
-            nextToken(); // Consume RBRACE
+            else // Single statement else
+            {
+                auto stmt = parseStatement();
+                if (!stmt)
+                    return nullptr;
+                elseBranch.push_back(std::move(stmt));
+            }
         }
 
         return std::make_unique<IfStmt>(std::move(condition), std::move(thenBranch), std::move(elseBranch), line, col);
@@ -630,18 +767,29 @@ namespace Pome
             return nullptr;
         if (!expect(TokenType::RPAREN))
             return nullptr;
-        if (!expect(TokenType::LBRACE))
-            return nullptr;
 
-        nextToken(); // Consume LBRACE
-        auto body = parseBlockStatement();
-
-        if (currentToken_.type != TokenType::RBRACE)
+        std::vector<std::unique_ptr<Statement>> body;
+        if (peekToken_.type == TokenType::LBRACE)
         {
-            error("Expected RBRACE after 'while' block, got " + currentToken_.debugString());
-            return nullptr;
+            nextToken(); // Consume LBRACE (peek -> current)
+            nextToken(); // Start of block
+            body = parseBlockStatement();
+
+            if (currentToken_.type != TokenType::RBRACE)
+            {
+                error("Expected RBRACE after 'while' block, got " + currentToken_.debugString());
+                return nullptr;
+            }
+            nextToken(); // Consume RBRACE
         }
-        nextToken(); // Consume RBRACE
+        else
+        {
+            nextToken(); // Move past RPAREN
+            auto stmt = parseStatement();
+            if (!stmt)
+                return nullptr;
+            body.push_back(std::move(stmt));
+        }
 
         return std::make_unique<WhileStmt>(std::move(condition), std::move(body), line, col);
     }
@@ -674,7 +822,7 @@ namespace Pome
             nextToken(); // Consume name. currentToken_ is now IN or ASSIGN or SEMICOLON.
 
             if (currentToken_.type == TokenType::IDENTIFIER && currentToken_.value == "in")
-            { // Check for pseudo-keyword 'in'
+            {                // Check for pseudo-keyword 'in'
                 nextToken(); // Consume 'in'. currentToken_ is start of iterable expr.
 
                 auto iterable = parseExpression();
@@ -683,17 +831,28 @@ namespace Pome
 
                 if (!expect(TokenType::RPAREN))
                     return nullptr;
-                if (!expect(TokenType::LBRACE))
-                    return nullptr;
 
-                nextToken(); // Consume LBRACE
-                auto body = parseBlockStatement();
-                if (currentToken_.type != TokenType::RBRACE)
+                std::vector<std::unique_ptr<Statement>> body;
+                if (peekToken_.type == TokenType::LBRACE)
                 {
-                    error("Expected '}' after for loop body.");
-                    return nullptr;
+                    nextToken(); // Consume LBRACE (peek -> current)
+                    nextToken(); // Start of block
+                    body = parseBlockStatement();
+                    if (currentToken_.type != TokenType::RBRACE)
+                    {
+                        error("Expected '}' after for loop body.");
+                        return nullptr;
+                    }
+                    nextToken(); // Consume RBRACE
                 }
-                nextToken(); // Consume RBRACE
+                else
+                {
+                    nextToken(); // Move past RPAREN
+                    auto stmt = parseStatement();
+                    if (!stmt)
+                        return nullptr;
+                    body.push_back(std::move(stmt));
+                }
 
                 return std::make_unique<ForEachStmt>(varName, std::move(iterable), std::move(body), line, col);
             }
@@ -754,18 +913,29 @@ namespace Pome
 
                 if (!expect(TokenType::RPAREN))
                     return nullptr;
-                if (!expect(TokenType::LBRACE))
-                    return nullptr;
 
-                nextToken(); // Consume LBRACE
-                auto body = parseBlockStatement();
-
-                if (currentToken_.type != TokenType::RBRACE)
+                std::vector<std::unique_ptr<Statement>> body;
+                if (peekToken_.type == TokenType::LBRACE)
                 {
-                    error("Expected RBRACE after 'for' block, got " + currentToken_.debugString());
-                    return nullptr;
+                    nextToken(); // Consume LBRACE
+                    nextToken(); // Start of block
+                    body = parseBlockStatement();
+
+                    if (currentToken_.type != TokenType::RBRACE)
+                    {
+                        error("Expected RBRACE after 'for' block, got " + currentToken_.debugString());
+                        return nullptr;
+                    }
+                    nextToken(); // Consume RBRACE
                 }
-                nextToken(); // Consume RBRACE
+                else
+                {
+                    nextToken(); // Move past RPAREN
+                    auto stmt = parseStatement();
+                    if (!stmt)
+                        return nullptr;
+                    body.push_back(std::move(stmt));
+                }
 
                 return std::make_unique<ForStmt>(std::move(initializer), std::move(condition), std::move(increment), std::move(body), line, col);
             }
@@ -821,18 +991,29 @@ namespace Pome
 
         if (!expect(TokenType::RPAREN))
             return nullptr;
-        if (!expect(TokenType::LBRACE))
-            return nullptr;
 
-        nextToken(); // Consume LBRACE
-        auto body = parseBlockStatement();
-
-        if (currentToken_.type != TokenType::RBRACE)
+        std::vector<std::unique_ptr<Statement>> body;
+        if (peekToken_.type == TokenType::LBRACE)
         {
-            error("Expected RBRACE after 'for' block, got " + currentToken_.debugString());
-            return nullptr;
+            nextToken(); // Consume LBRACE
+            nextToken(); // Start of block
+            body = parseBlockStatement();
+
+            if (currentToken_.type != TokenType::RBRACE)
+            {
+                error("Expected RBRACE after 'for' block, got " + currentToken_.debugString());
+                return nullptr;
+            }
+            nextToken(); // Consume RBRACE
         }
-        nextToken(); // Consume RBRACE
+        else
+        {
+            nextToken(); // Move past RPAREN
+            auto stmt = parseStatement();
+            if (!stmt)
+                return nullptr;
+            body.push_back(std::move(stmt));
+        }
 
         return std::make_unique<ForStmt>(std::move(initializer), std::move(condition), std::move(increment), std::move(body), line, col);
     }
@@ -885,9 +1066,14 @@ namespace Pome
         }
         else
         {
-            if (!expect(TokenType::SEMICOLON))
-                return nullptr;
-            nextToken(); // Consume SEMICOLON
+            // Only expect a semicolon if the next token is not a closing brace or EOF
+            if (peekToken_.type != TokenType::RBRACE && peekToken_.type != TokenType::END_OF_FILE)
+            {
+                if (!expect(TokenType::SEMICOLON))
+                    return nullptr;
+                nextToken(); // Consume SEMICOLON
+            }
+            // If peekToken_ IS RBRACE or EOF, we don't expect a semicolon.
             return std::make_unique<ExpressionStmt>(std::move(expr), expr->getLine(), expr->getColumn());
         }
     }
@@ -1020,7 +1206,8 @@ namespace Pome
          */
         nextToken(); // Consume IMPORT
 
-        std::string moduleName;
+        std::string moduleName; // Declare moduleName here
+
         if (currentToken_.type != TokenType::IDENTIFIER)
         {
             error("Expected module name after 'import', got " + currentToken_.debugString());
@@ -1029,13 +1216,20 @@ namespace Pome
         moduleName = currentToken_.value;
         nextToken(); // Consume IDENTIFIER
 
-        while (currentToken_.type == TokenType::DOT)
+        while (currentToken_.type == TokenType::DOT || currentToken_.type == TokenType::DIVIDE)
         {
-            moduleName += ".";
-            nextToken(); // Consume DOT
+            if (currentToken_.type == TokenType::DOT)
+            {
+                moduleName += ".";
+            }
+            else
+            { // It's DIVIDE
+                moduleName += "/";
+            }
+            nextToken(); // Consume DOT or DIVIDE
             if (currentToken_.type != TokenType::IDENTIFIER)
             {
-                error("Expected identifier after '.' in module name.");
+                error("Expected identifier after '.' or '/' in module name.");
                 return nullptr;
             }
             moduleName += currentToken_.value;
@@ -1070,13 +1264,20 @@ namespace Pome
         moduleName = currentToken_.value;
         nextToken(); // Consume module name
 
-        while (currentToken_.type == TokenType::DOT)
+        while (currentToken_.type == TokenType::DOT || currentToken_.type == TokenType::DIVIDE)
         {
-            moduleName += ".";
-            nextToken(); // Consume DOT
+            if (currentToken_.type == TokenType::DOT)
+            {
+                moduleName += ".";
+            }
+            else
+            { // It's DIVIDE
+                moduleName += "/";
+            }
+            nextToken(); // Consume DOT or DIVIDE
             if (currentToken_.type != TokenType::IDENTIFIER)
             {
-                error("Expected identifier after '.' in module name.");
+                error("Expected identifier after '.' or '/' in module name.");
                 return nullptr;
             }
             moduleName += currentToken_.value;
@@ -1130,9 +1331,13 @@ namespace Pome
         {
             stmt = parseFunctionDeclaration();
         }
+        else if (currentToken_.type == TokenType::CLASS) // ADD THIS
+        {
+            stmt = parseClassDeclaration();
+        }
         else
         {
-            error("Expected 'var' or 'fun' after 'export', got " + currentToken_.debugString());
+            error("Expected 'var', 'fun', or 'class' after 'export', got " + currentToken_.debugString()); // Update error message
             return nullptr;
         }
 

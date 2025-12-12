@@ -1,0 +1,17 @@
+var head = {next: nil};
+var current = head;
+var i = 0;
+
+print("Building deep object graph...");
+
+while (i < 10000) {
+    var node = {next: nil};
+    current.next = node;
+    current = node;
+    i = i + 1;
+}
+
+print("Graph built. Forcing GC mark phase...");
+gc_collect(); 
+
+print("Survived GC!");

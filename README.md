@@ -11,7 +11,7 @@
 
 **Pome** is a compact, interpreted programming language created as a **learning project** to explore interpreter design and implementation. It demonstrates fundamental concepts in language design including lexing, parsing, AST traversal, and runtime value management. The language features dynamic typing, object-oriented programming capabilities, garbage collection, and a modular system for code organization. Built entirely in C++, Pome serves as an educational foundation for understanding how programming languages work internally.
 
-> Note: Pome is supposed to be a successor of an old interpreted programming language I made. I improved the underlying architecture and extended its capabilities so I can potentially use it for actual programming tasks and learning more about programming language's ecosystems.
+> Note: Pome is supposed to be a successor of an old interpreted programming language I made. I improved the underlying architecture and extended its capabilities so I can potentially use it for actual programming tasks and to learn more about programming languages ecosystems.
 
 ## Features
 
@@ -215,19 +215,23 @@ io.writeFile("output.txt", "Hello, Pome!");
 ### Standard Library
 
 #### Math Module
+
 - `math.pi` - Pi constant
 - `math.sin(x)` - Sine function
 - `math.cos(x)` - Cosine function
 - `math.random()` - Random number between 0 and 1
 
 #### String Module
+
 - `string.sub(str, start, end)` - Extract substring
 
 #### IO Module
+
 - `io.readFile(path)` - Read file contents
 - `io.writeFile(path, content)` - Write content to file
 
 #### Global Functions
+
 - `print(...)` - Print values to stdout
 - `len(collection)` - Get length of list or table
 - `type(value)` - Get type name of value
@@ -348,7 +352,7 @@ print("File contents:", content);
 
 ## Version
 
-Current version: **0.1.0**
+Current version: **0.2.0**
 
 ## Platform Support
 

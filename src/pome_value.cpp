@@ -283,12 +283,13 @@ namespace Pome
             /**
              * Same type comparison
              */
-            if (obj1->type() == ObjectType::STRING)
+            if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
             {
                 return static_cast<PomeString*>(obj1)->getValue() <
                        static_cast<PomeString*>(obj2)->getValue();
             }
-            return obj1 < obj2;
+            // For other object types, default to pointer comparison or implement specific logic
+            return obj1 < obj2; // Default to pointer comparison for other objects
         }
         return false; // nil == nil
     }

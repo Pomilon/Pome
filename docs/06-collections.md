@@ -24,12 +24,12 @@ print(fruits[2]);  // Output: orange
 
 ### Negative Indexing
 
-Negative indices count from the end:
+Use negative indices to access elements from the end of the list:
 
 ```pome
 var fruits = ["apple", "banana", "orange"];
-print(fruits[-1]);  // Output: orange (last element)
-print(fruits[-2]);  // Output: banana (second to last)
+print(fruits[-1]); // Output: orange
+print(fruits[-2]); // Output: banana
 ```
 
 ### Getting List Length
@@ -60,7 +60,7 @@ print(len(empty));  // Output: 0
 
 ### List Concatenation
 
-Combine lists with the `+` operator:
+Use the `+` operator to combine two lists:
 
 ```pome
 var list1 = [1, 2];
@@ -79,6 +79,7 @@ for (var i = 0; i < len(items); i = i + 1) {
 ```
 
 Output:
+
 ```
 a
 b
@@ -87,23 +88,13 @@ c
 
 ### List Slicing
 
-Extract a portion of a list:
+Extract sub-lists using the `[start:end]` syntax (end is exclusive):
 
 ```pome
 var numbers = [1, 2, 3, 4, 5];
-var slice = numbers[1:4];  // Elements 1, 2, 3
-print(slice);  // Output: [2, 3, 4]
-```
-
-Slicing syntax: `list[start:end]`
-- `start`: First index to include (default 0)
-- `end`: First index to exclude
-
-```pome
-var numbers = [1, 2, 3, 4, 5];
-print(numbers[0:2]);    // Output: [1, 2]
-print(numbers[2:]);     // Output: [3, 4, 5]
-print(numbers[:3]);     // Output: [1, 2, 3]
+print(numbers[1:4]);   // Output: [2, 3, 4]
+print(numbers[:3]);    // Output: [1, 2, 3] (from start)
+print(numbers[3:]);    // Output: [4, 5] (to end)
 ```
 
 ## Tables
@@ -193,8 +184,8 @@ var user = {
     }
 };
 
-print(user.address.city);  // Output: Portland
-user.address.zip = "97202";
+print(user.name); // Output: Frank
+print(user.address.city); // Output: Portland
 ```
 
 ### Table Patterns
@@ -208,8 +199,8 @@ var users = [
     {name: "Charlie", age: 35}
 ];
 
-print(users[0].name);  // Output: Alice
-print(users[1].age);   // Output: 25
+print(users[0].name); // Output: Alice
+print(users[1].age);  // Output: 25
 ```
 
 ## Common Collection Operations
@@ -238,7 +229,7 @@ var evens = [];
 
 for (var i = 0; i < len(numbers); i = i + 1) {
     if (numbers[i] % 2 == 0) {
-        evens = evens + [numbers[i]];
+        evens = evens + [numbers[i]]; // Semicolon added
     }
 }
 
@@ -252,7 +243,7 @@ var numbers = [1, 2, 3, 4];
 var doubled = [];
 
 for (var i = 0; i < len(numbers); i = i + 1) {
-    doubled = doubled + [numbers[i] * 2];
+    doubled = doubled + [numbers[i] * 2]; // Semicolon added
 }
 
 print(doubled);  // Output: [2, 4, 6, 8]
@@ -311,7 +302,7 @@ print(countOccurrences(items, 2));  // Output: 3
 fun reverse(list) {
     var result = [];
     for (var i = len(list) - 1; i >= 0; i = i - 1) {
-        result = result + [list[i]];
+        result = result + [list[i]]; // Semicolon added
     }
     return result;
 }
@@ -344,6 +335,7 @@ print(flatten(nested));  // Output: [1, 2, 3, 4, 5, 6]
 1. **Use meaningful variable names**: `users` instead of `u`
 
 2. **Check bounds before accessing**:
+
    ```pome
    var items = [1, 2, 3];
    if (index >= 0 and index < len(items)) {
@@ -352,12 +344,14 @@ print(flatten(nested));  // Output: [1, 2, 3, 4, 5, 6]
    ```
 
 3. **Use consistent key names in tables**:
+
    ```pome
    var user1 = {name: "Alice", age: 30};
    var user2 = {name: "Bob", age: 25};
    ```
 
 4. **Keep table keys simple**: Use lowercase with underscores
+
    ```pome
    var config = {
        max_retries: 3,
@@ -366,12 +360,14 @@ print(flatten(nested));  // Output: [1, 2, 3, 4, 5, 6]
    ```
 
 5. **Use lists for ordered data, tables for structured data**:
+
    ```pome
    var scores = [100, 95, 88];      // List - ordered values
    var person = {name: "Alice", age: 30};  // Table - structured data
    ```
 
 6. **Document complex data structures**:
+
    ```pome
    // users is a list of tables with name, email, age
    var users = [

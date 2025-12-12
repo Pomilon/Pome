@@ -53,12 +53,12 @@ print(3 <= 5);   // Less or equal: true
 
 ### Type Consideration
 
-Comparison operators work with different types:
+Pome does not perform automatic type coercion for comparisons. When comparing values of different types, the comparison will generally evaluate to `false` unless values are explicitly converted to compatible types first. For predictable results, ensure both sides of a comparison have the same type.
 
 ```pome
-print(5 == "5");      // May be true (type coercion)
-print(true == 1);     // Depends on implementation
-print(nil == false);  // false
+print(5 == "5");      // false (different types)
+print(true == 1);       // false (different types)
+print(nil == false);    // false
 ```
 
 ## Logical Operators
@@ -85,12 +85,13 @@ print(false and true);   // false
 print(false and false);  // false
 ```
 
-Short-circuits - if left is false, right is not evaluated:
+Short-circuits: If the first operand is `false`, the second is not evaluated.
 
 ```pome
 var x = nil;
-if (x == nil and len(x) > 0) {
-    // Second condition not evaluated because x == nil is true
+// Safe: len(x) is not evaluated because x != nil is false
+if (x != nil and len(x) > 0) {
+    // ...
 }
 ```
 
@@ -105,11 +106,16 @@ print(false or true);   // true
 print(false or false);  // false
 ```
 
-Short-circuits - if left is true, right is not evaluated:
+Short-circuits: If the first operand is `true`, the second is not evaluated.
 
 ```pome
-if (x != nil or isValid(x)) {
-    // If x != nil is true, isValid(x) is not called
+var x = nil;
+// Safe: isValid(x) is only called if x is NOT nil (Wait, logic check: if x != nil is true, it short circuits. If false, it evals right. So x IS nil on right. Bad example for OR short circuit safety unless inverted).
+// Better example:
+var config = {debug: true};
+// If config.debug is true, the second part is skipped.
+if (config.debug or expensiveCheck()) {
+    print("Debug or check passed");
 }
 ```
 
@@ -121,7 +127,7 @@ Inverts a boolean value:
 print(not true);   // false
 print(not false);  // true
 print(not nil);    // true (nil is falsy)
-print(not 0);      // false (0 is truthy in Pome)
+print(not 0);      // true (0 is falsy)
 ```
 
 ## String Operators
@@ -161,14 +167,15 @@ Operators are evaluated in this order (highest to lowest):
 |-----------|----------|----------------|
 | 1 | `()` `[]` `.` | Left to right |
 | 2 | `!` `-` (unary) | Right to left |
-| 3 | `*` `/` `%` | Left to right |
-| 4 | `+` `-` | Left to right |
-| 5 | `<` `<=` `>` `>=` | Left to right |
-| 6 | `==` `!=` | Left to right |
-| 7 | `and` | Left to right |
-| 8 | `or` | Left to right |
-| 9 | `?:` (ternary) | Right to left |
-| 10 | `=` | Right to left |
+| 3 | `^` | Left to right |
+| 4 | `*` `/` `%` | Left to right |
+| 5 | `+` `-` | Left to right |
+| 6 | `<` `<=` `>` `>=` | Left to right |
+| 7 | `==` `!=` | Left to right |
+| 8 | `and` | Left to right |
+| 9 | `or` | Left to right |
+| 10 | `?:` (ternary) | Right to left |
+| 11 | `=` | Right to left |
 
 ### Examples
 
@@ -294,6 +301,7 @@ var result = input != nil ? input : "default";
 ## Operator Tips
 
 1. **Use parentheses for clarity**: Even when not required, they make code easier to read
+
    ```pome
    // Less clear
    if (x > 5 and y < 10 or z == 3) { }
@@ -303,20 +311,25 @@ var result = input != nil ? input : "default";
    ```
 
 2. **Be aware of operator precedence**: Unexpected results come from forgetting it
+
    ```pome
    print(2 + 3 * 4);  // 14, not 20
    ```
 
 3. **Use short-circuit evaluation strategically**:
+
    ```pome
    // This won't crash if x is nil
    if (x != nil and x > 10) { }
    ```
 
-4. **Remember string coercion**:
-   ```pome
-   print("Value: " + myVar);  // Converts myVar to string
-   ```
+4. **Be explicit when converting types**:
+
+    ```pome
+    // Pome does not implicitly convert non-string values when concatenating.
+    // Ensure `myVar` is a string before concatenation.
+    print("Value: " + myVar);  // myVar must be a string
+    ```
 
 ---
 

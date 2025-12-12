@@ -4,7 +4,7 @@ Functions are reusable blocks of code that perform specific tasks.
 
 ## Defining Functions
 
-Use the `fun fills` keyword to define a function:
+Use the `fun` keyword to define a function:
 
 ```pome
 fun greet(name) {
@@ -65,6 +65,7 @@ print("Outside function:", x);  // x is still 50
 ```
 
 Output:
+
 ```
 Inside function: 100
 Outside function: 50
@@ -126,7 +127,7 @@ print(operation(5, 3));  // Output: 8
 
 ## Anonymous Functions
 
-You can create functions without names:
+Pome supports anonymous function expressions, also known as lambdas. These functions don't have a name and can be assigned to variables or passed as arguments.
 
 ```pome
 var multiply = fun(a, b) {
@@ -138,7 +139,7 @@ print(multiply(4, 5));  // Output: 20
 
 ### Anonymous Functions in Variables
 
-This is useful for storing operations:
+You can assign function literals directly to variables:
 
 ```pome
 var square = fun(x) {
@@ -150,7 +151,7 @@ print(square(5));  // Output: 25
 
 ## Closures
 
-Functions can "close over" variables from their surrounding scope:
+Functions in Pome form **closures**, meaning they capture and retain access to variables from their defining scope, even after the outer function has returned.
 
 ```pome
 fun makeAdder(amount) {
@@ -167,6 +168,8 @@ print(addTen(10));   // Output: 20
 ```
 
 ### Practical Closure Example
+
+Closures are useful for maintaining private state:
 
 ```pome
 fun makeCounter() {
@@ -187,7 +190,7 @@ Each call to `makeCounter()` creates a new `count` variable with its own closure
 
 ## Higher-Order Functions
 
-Functions that take other functions as parameters:
+Functions that take other functions as parameters or return them are called higher-order functions.
 
 ```pome
 fun apply(operation, a, b) {
@@ -208,6 +211,8 @@ print(apply(multiply, 5, 3));  // Output: 15
 
 ### Using Higher-Order Functions for Callbacks
 
+You can pass anonymous functions directly as callbacks:
+
 ```pome
 fun repeatTimes(count, callback) {
     for (var i = 0; i < count; i = i + 1) {
@@ -221,6 +226,7 @@ repeatTimes(3, fun(i) {
 ```
 
 Output:
+
 ```
 Iteration 0
 Iteration 1
@@ -319,6 +325,7 @@ countdown(3);
 ```
 
 Output:
+
 ```
 3
 2
@@ -331,6 +338,7 @@ Blastoff!
 1. **Use meaningful names**: `calculateTotal` is better than `calc`
 
 2. **Keep functions focused**: A function should do one thing well
+
    ```pome
    // Good
    fun getUsername(user) {
@@ -351,6 +359,7 @@ Blastoff!
    ```
 
 3. **Document complex logic**: Use comments for non-obvious code
+
    ```pome
    // Fibonacci using dynamic programming (avoiding deep recursion)
    fun fib(n) {
@@ -360,6 +369,7 @@ Blastoff!
    ```
 
 4. **Use closures wisely**: They're powerful but can be hard to follow
+
    ```pome
    // Clear closure usage
    var operations = {
@@ -369,6 +379,7 @@ Blastoff!
    ```
 
 5. **Avoid deeply nested functions**: Can impact readability
+
    ```pome
    // Prefer
    fun outer() {

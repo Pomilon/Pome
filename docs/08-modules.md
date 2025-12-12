@@ -97,29 +97,35 @@ user.display();
 
 ## Module Paths
 
-### Relative Paths
+### Module Paths
 
-Specify the path to the module file:
+Specify the path to the module file. When importing a module with path separators (e.g., `/`), the full path becomes part of the module's identifier in the global environment. It does **not** create nested objects for access (e.g., `my_dir.my_module`). You must use the full path as the identifier.
 
 ```pome
-import ../utils/math_utils;
-import ./local_config;
-import data/database;
+// Assuming a file at 'utils/math_utils.pome'
+import utils/math_utils; // This imports the module under the identifier 'utils/math_utils'
+
+// Access exported content using the full identifier
+var result = utils/math_utils.add(5, 3); // This will cause a parsing error
+// A workaround would be to assign the imported module to a simpler identifier:
+// var math_util = utils/math_utils;
+// var result = math_util.add(5, 3);
 ```
 
 Patterns:
+
 - `../` - Parent directory
 - `./` - Current directory
 - `folder/file` - Subdirectory
 
 ### Module Names
 
-The module name is the filename without `.pome`:
+The module name is the filename without `.pome`, potentially including its path:
 
 ```
-String "models.pome" → import models;
-String "math_utils.pome" → import math_utils;
-String "folder/handler.pome" → import folder/handler;
+String "models.pome" → import models; // Access via `models`
+String "math_utils.pome" → import math_utils; // Access via `math_utils`
+String "folder/handler.pome" → import folder/handler; // Access via `folder/handler`
 ```
 
 ## Namespace Organization
@@ -170,6 +176,7 @@ export fun average(arr) {
 
 export fun max(arr) {
     if (len(arr) == 0) return nil;
+    
     var maximum = arr[0];
     for (var i = 1; i < len(arr); i = i + 1) {
         if (arr[i] > maximum) {
@@ -184,15 +191,16 @@ export fun max(arr) {
 // main.pome
 import utils/array_utils;
 
+var array_utils_alias = utils/array_utils; // Alias for easier access
 var numbers = [1, 2, 3, 4, 5];
-print(array_utils.sum(numbers));      // Output: 15
-print(array_utils.average(numbers));  // Output: 3
-print(array_utils.max(numbers));      // Output: 5
+print(array_utils_alias.sum(numbers));      // Output: 15
+print(array_utils_alias.average(numbers));  // Output: 3
+print(array_utils_alias.max(numbers));      // Output: 5
 ```
 
 ### Model/Class Modules
 
-Define classes in separate modules:
+You can define classes in separate modules. When importing a module with a path, the entire path string forms the module's identifier. Accessing it as a nested object (e.g., `models.Book`) will result in a runtime error.
 
 ```pome
 // models/book.pome
@@ -211,10 +219,11 @@ export class Book {
 
 ```pome
 // main.pome
-import models/book;
+// import models/book; // Importing this creates a global identifier 'models/book'
+// var book = models/book.Book("1984", "George Orwell", 1949); // This will cause a runtime error (models is undefined)
 
-var book = models.Book("1984", "George Orwell", 1949);
-print(book.describe());
+print("Classes can be exported and imported, but direct nested access via path is not supported.");
+print("Instead, you would need to alias the imported module: `var BookModule = models/book; var book = BookModule.Book(...);`");
 ```
 
 ### Configuration Modules
@@ -263,7 +272,7 @@ export fun getUser(id) {
 }
 
 export fun addUser(user) {
-    users = users + [user];
+    users = users + [{id: user.id, name: user.name, email: user.email}];
 }
 
 export fun getAllUsers() {
@@ -275,10 +284,10 @@ export fun getAllUsers() {
 // main.pome
 import data/user_store;
 
-var user = data/user_store.getUser(1);
-print(user.name);
-
-data/user_store.addUser({id: 3, name: "Charlie", email: "charlie@example.com"});
+// ...
+// To avoid complex literal parsing issues:
+var newUser = {id: 3, name: "Charlie", email: "charlie@example.com"};
+// ...
 ```
 
 ## Built-in Modules
@@ -319,6 +328,7 @@ print(content);
 ## Module Best Practices
 
 1. **One responsibility per module**: Keep related functions together
+
    ```pome
    // Good structure
    math_utils.pome    // Math operations
@@ -327,12 +337,14 @@ print(content);
    ```
 
 2. **Use clear names**: Module names should describe their content
+
    ```pome
    user_validator.pome      // Validates users
    database_connection.pome // Database operations
    ```
 
 3. **Hide implementation details**: Only export necessary items
+
    ```pome
    // string_utils.pome
    fun _private_helper(str) {
@@ -346,6 +358,7 @@ print(content);
    ```
 
 4. **Document exported interfaces**: Make clear what modules provide
+
    ```pome
    // config.pome
    // Configuration module provides application settings
@@ -356,6 +369,7 @@ print(content);
    ```
 
 5. **Avoid circular dependencies**: Module A importing Module B that imports A
+
    ```pome
    // Avoid this structure
    // models/user.pome imports services/user_service.pome
@@ -363,6 +377,7 @@ print(content);
    ```
 
 6. **Group related modules in directories**:
+
    ```
    project/
    ├── models/

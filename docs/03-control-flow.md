@@ -84,6 +84,7 @@ while (count < 5) {
 ```
 
 Output:
+
 ```
 Count: 0
 Count: 1
@@ -127,6 +128,7 @@ for (var i = 0; i < 5; i = i + 1) {
 ```
 
 Output:
+
 ```
 i: 0
 i: 1
@@ -152,6 +154,7 @@ for (initialization; condition; increment) {
 ### For Loop Examples
 
 Countdown:
+
 ```pome
 for (var i = 10; i > 0; i = i - 1) {
     print(i);
@@ -160,6 +163,7 @@ print("Blastoff!");
 ```
 
 Multiplication table:
+
 ```pome
 for (var i = 1; i <= 5; i = i + 1) {
     for (var j = 1; j <= 5; j = j + 1) {
@@ -266,20 +270,33 @@ if (not isRaining) {
 
 ### Short-Circuit Evaluation
 
-Pome uses short-circuit evaluation:
+Pome supports short-circuit evaluation for `and` and `or` operators. The right-hand side is only evaluated if necessary.
 
 ```pome
 var x = nil;
 
-// Second part never evaluated because x == nil is false
-if (x == nil or x > 10) {
-    print("x is nil or greater than 10");
+// This is safe because (x != nil) is false, so the second part is skipped.
+if (x != nil and x.someProperty) {
+    print("This won't crash");
 }
 
-// Second part never evaluated because first is true
-if (x != nil or true) {
-    print("This always prints");
+// This is safe because (x == nil) is true, so the second part is skipped.
+if (x == nil or x.someProperty) {
+    print("Safe check");
 }
+```
+
+## Single-Line Blocks
+
+Control flow statements support single-line bodies without braces:
+
+```pome
+if (true) print("Single line if");
+
+var i = 0;
+while (i < 3) i = i + 1;
+
+for (var j = 0; j < 3; j = j + 1) print(j);
 ```
 
 ## Breaking Out of Loops
@@ -301,6 +318,7 @@ for (var i = 0; i < 10; i = i + 1) {
 ## Best Practices
 
 1. **Keep conditions simple**: Break complex conditions into multiple lines
+
    ```pome
    if (age >= 18 and 
        hasLicense and 
@@ -310,6 +328,7 @@ for (var i = 0; i < 10; i = i + 1) {
    ```
 
 2. **Avoid deeply nested conditions**: Consider extracting functions
+
    ```pome
    fun canDrive(age, hasLicense) {
        return age >= 18 and hasLicense;
@@ -321,6 +340,7 @@ for (var i = 0; i < 10; i = i + 1) {
    ```
 
 3. **Use meaningful loop variables**: `i` is fine for simple counters, but use descriptive names otherwise
+
    ```pome
    for (var attempt = 1; attempt <= maxAttempts; attempt = attempt + 1) {
        // ...

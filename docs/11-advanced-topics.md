@@ -6,7 +6,7 @@ Explore advanced Pome language concepts and patterns.
 
 ### Understanding Lexical Scope
 
-Closures capture variables from their defining scope:
+Closures capture variables from their defining scope.
 
 ```pome
 var globalX = "global";
@@ -71,6 +71,8 @@ print(triple(5));  // Output: 15
 
 #### Decorators
 
+Decorators typically involve returning an anonymous function that wraps another function.
+
 ```pome
 fun withLogging(fn) {
     return fun(x) {
@@ -88,6 +90,7 @@ loggedSquare(5);
 ```
 
 Output:
+
 ```
 Calling function with argument: 5
 Function returned: 25
@@ -104,13 +107,8 @@ fun compose(f, g) {
     };
 }
 
-fun add5(x) {
-    return x + 5;
-}
-
-fun double(x) {
-    return x * 2;
-}
+fun add5(x) { return x + 5; }
+fun double(x) { return x * 2; }
 
 var addThenDouble = compose(double, add5);
 print(addThenDouble(3));  // (3 + 5) * 2 = 16
@@ -262,6 +260,7 @@ emitter.emit("message", "Hello World");
 ```
 
 Output:
+
 ```
 Handler 1 received: Hello World
 Handler 2 received: Hello World
@@ -473,6 +472,7 @@ print(factorial(5));  // Output: 120
 ## Best Practices for Advanced Code
 
 1. **Keep it readable**: Clever code is hard to maintain
+
    ```pome
    // Clever but confusing
    var x = pipe(5, [double, addTen, stringify]);
@@ -484,6 +484,7 @@ print(factorial(5));  // Output: 120
    ```
 
 2. **Document complex patterns**: Explain non-obvious code
+
    ```pome
    // Memoization: caches results to avoid recomputation
    fun memoize(fn) {
@@ -493,6 +494,7 @@ print(factorial(5));  // Output: 120
    ```
 
 3. **Test edge cases**: Advanced patterns need thorough testing
+
    ```pome
    // Test memoization with edge cases
    var memoized = memoize(expensiveFunc);
@@ -502,6 +504,7 @@ print(factorial(5));  // Output: 120
    ```
 
 4. **Avoid over-engineering**: Don't use advanced patterns unless needed
+
    ```pome
    // Probably overkill
    var sumFunc = memoize(compose(reduce, map));

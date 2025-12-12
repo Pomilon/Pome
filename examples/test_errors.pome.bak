@@ -1,8 +1,0 @@
-// Division by zero
-var x = 10 / 0; // Should report line 2
-
-// Undefined variable
-// print(y); // Should report line 5
-
-// Syntax error
-// if (x { } // Missing paren
