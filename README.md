@@ -359,8 +359,8 @@ Current version: **0.2.0**
 ## Platform Support
 
 - **Linux**: Full support
-- **macOS**: Full support
-- **Windows**: Full support
+- **macOS**: No idea (I don't own a mac)
+- **Windows**: Not yet.
 
 ## Contributing
 
