@@ -3,7 +3,6 @@ project(pome LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_BUILD_TYPE Debug) # Enable debug build type
 
 # Define library source files (everything except main.cpp)
 set(LIB_SOURCES

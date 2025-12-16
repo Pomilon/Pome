@@ -153,6 +153,13 @@ namespace Pome
         {
             return PomeValue(gc.allocate<PomeString>("module"));
         }
+        else if (auto obj = args[0].asObject())
+        {
+            if (obj->type() == ObjectType::NATIVE_OBJECT)
+            {
+                return PomeValue(gc.allocate<PomeString>("native_object"));
+            }
+        }
 
         return PomeValue(gc.allocate<PomeString>("unknown"));
     }
@@ -160,10 +167,7 @@ namespace Pome
     Interpreter::Interpreter() : importer_(*this)
     {
         gc_.setInterpreter(this);
-        /**
-         * Allocate Environment via GC
-         */
-        currentEnvironment_ = gc_.allocate<Environment>(nullptr);
+        currentEnvironment_ = gc_.allocate<Environment>(this, nullptr);
         globalEnvironment_ = currentEnvironment_; // Set global environment
 
         setupGlobalEnvironment();
@@ -276,7 +280,7 @@ namespace Pome
         }
         catch (const std::runtime_error &e)
         {
-            std::cerr << "Runtime error: " << e.what() << std::endl;
+            // std::cerr << "Runtime error: " << e.what() << std::endl;
         }
     }
 
@@ -424,7 +428,7 @@ namespace Pome
             /**
              * Fix for module access
              */
-            else if (objectValue.asModule())
+            else if (objectValue.isModule())
             {
                 auto module = objectValue.asModule();
                 PomeString *keyStr = gc_.allocate<PomeString>(memberName);
@@ -546,7 +550,7 @@ namespace Pome
         /**
          * New environment rooted via currentEnvironment_ once assigned
          */
-        currentEnvironment_ = gc_.allocate<Environment>(pomeFunc->closureEnv);
+        currentEnvironment_ = gc_.allocate<Environment>(this, pomeFunc->closureEnv);
 
         for (size_t i = 0; i < pomeFunc->parameters.size(); ++i)
         {
@@ -586,22 +590,25 @@ namespace Pome
          */
         RootGuard objGuard(gc_, objectValue.asObject());
 
-        if (auto module = objectValue.asModule())
+        // Check if it's a module
+        if (objectValue.isModule())
         {
-            /**
-             * Create key string with GC
-             */
-            PomeString *keyStr = gc_.allocate<PomeString>(memberName);
+            PomeModule *module = objectValue.asModule();
+
+            PomeString *keyStr = gc_.allocate<PomeString>(memberName); // Key for lookup. Allocate PomeString via GC.
             PomeValue key(keyStr);
 
-            if (module->exports.count(key))
+            auto it = module->exports.find(key); // Use find for map lookup
+
+            if (it != module->exports.end())
             {
-                lastEvaluatedValue_ = module->exports[key];
+                lastEvaluatedValue_ = it->second;
             }
             else
             {
-                throw RuntimeError("Member '" + memberName + "' not found in module.", expr.getLine(), expr.getColumn());
+                throw std::runtime_error("Module '" + module->toString() + "' does not have member '" + memberName + "'.");
             }
+            return;
         }
         else if (objectValue.isTable())
         {
@@ -914,6 +921,7 @@ namespace Pome
             else if (objectValue.isTable())
             {
                 auto table = objectValue.asTable();
+                // The indexValue is already a PomeValue, use it directly as the key
                 table->elements[indexValue] = value;
             }
             else
@@ -954,7 +962,7 @@ namespace Pome
         PomeValue condition = evaluateExpression(*stmt.getCondition());
 
         Environment *previousEnvironment = currentEnvironment_;
-        currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+        currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
         try
         {
@@ -985,7 +993,7 @@ namespace Pome
     void Interpreter::visit(WhileStmt &stmt)
     {
         Environment *previousEnvironment = currentEnvironment_;
-        currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+        currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
         try
         {
@@ -1009,7 +1017,7 @@ namespace Pome
     void Interpreter::visit(ForStmt &stmt)
     {
         Environment *previousEnvironment = currentEnvironment_;
-        currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+        currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
         try
         {
@@ -1030,7 +1038,7 @@ namespace Pome
                 }
 
                 Environment *savedEnv = currentEnvironment_;
-                currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+                currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
                 try
                 {
@@ -1066,7 +1074,7 @@ namespace Pome
         PomeValue iterableValue = evaluateExpression(*stmt.getIterable());
 
         Environment *previousEnvironment = currentEnvironment_;
-        currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+        currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
         try
         {
@@ -1078,7 +1086,7 @@ namespace Pome
                     currentEnvironment_->define(stmt.getVarName(), item);
 
                     Environment *savedEnv = currentEnvironment_;
-                    currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+                    currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
                     try
                     {
@@ -1103,7 +1111,7 @@ namespace Pome
                     currentEnvironment_->define(stmt.getVarName(), pair.first);
 
                     Environment *savedEnv = currentEnvironment_;
-                    currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+                    currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
                     try
                     {
@@ -1151,7 +1159,7 @@ namespace Pome
                     currentEnvironment_->define(stmt.getVarName(), item);
 
                     Environment *savedEnv = currentEnvironment_;
-                    currentEnvironment_ = gc_.allocate<Environment>(currentEnvironment_);
+                    currentEnvironment_ = gc_.allocate<Environment>(this, currentEnvironment_);
 
                     try
                     {
@@ -1622,4 +1630,4 @@ namespace Pome
         throw std::runtime_error("Unsupported unary operation: " + op);
     }
 
-} // namespace Pome}
+} // namespace Pome

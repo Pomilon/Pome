@@ -9,6 +9,7 @@
 // Assuming nlohmann/json.hpp is in external/nlohmann
 #include "../external/nlohmann/json.hpp"
 #include <fstream> // For std::ifstream
+#include <iostream> // For std::cerr
 
 namespace Pome {
 
@@ -50,8 +51,8 @@ inline PomePkgInfo readPomePkgJson(const std::string& packagePath) {
         }
     }
 
-    if (j.contains("nativeModules") && j["nativeModules"].is_array()) {
-        for (const auto& module : j["nativeModules"]) {
+    if (j.contains("native_modules") && j["native_modules"].is_array()) {
+        for (const auto& module : j["native_modules"]) {
             info.nativeModules.push_back(module.get<std::string>());
         }
     }

@@ -32,7 +32,8 @@ namespace Pome
         CLASS,
         INSTANCE,
         MODULE,
-        ENVIRONMENT // Added
+        ENVIRONMENT,
+        NATIVE_OBJECT // Added for native wrapper objects
     };
 
     /**
