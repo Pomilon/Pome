@@ -74,12 +74,6 @@ namespace Pome {
         PomeModule* savedModule = currentModule;
         if (module) currentModule = module;
         
-#ifdef COMPUTED_GOTO
-        std::cerr << "USING COMPUTED GOTO" << std::endl;
-#else
-        std::cerr << "USING SWITCH DISPATCH" << std::endl;
-#endif
-
         int initialFrameIdx = frameCount;
         if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
         
@@ -120,6 +114,7 @@ namespace Pome {
             &&LABEL_TEST, &&LABEL_TESTSET,
             &&LABEL_CALL, &&LABEL_TAILCALL, &&LABEL_RETURN,
             &&LABEL_GETGLOBAL, &&LABEL_SETGLOBAL,
+            &&LABEL_GETUPVAL, &&LABEL_SETUPVAL, &&LABEL_CLOSURE,
             &&LABEL_NEWLIST, &&LABEL_NEWTABLE, &&LABEL_GETTABLE, &&LABEL_SETTABLE, &&LABEL_SELF,
             &&LABEL_FORLOOP, &&LABEL_FORPREP,
             &&LABEL_TFORCALL, &&LABEL_TFORLOOP,
@@ -705,6 +700,77 @@ namespace Pome {
             case OpCode::SETGLOBAL:
             #endif
             globals[constants[Chunk::getBx(ip[-1])]] = stack[frameBase + Chunk::getA(ip[-1])];
+            DISPATCH();
+        }
+
+        LABEL_GETUPVAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETUPVAL:
+            #endif
+            uint32_t instruction = ip[-1];
+            int a = Chunk::getA(instruction);
+            int b = Chunk::getB(instruction);
+            if (currentFrame->function && b < (int)currentFrame->function->upvalues.size()) {
+                stack[frameBase + a] = currentFrame->function->upvalues[b];
+            } else {
+                stack[frameBase + a] = PomeValue();
+            }
+            DISPATCH();
+        }
+
+        LABEL_SETUPVAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETUPVAL:
+            #endif
+            uint32_t instruction = ip[-1];
+            int a = Chunk::getA(instruction);
+            int b = Chunk::getB(instruction);
+            if (currentFrame->function && b < (int)currentFrame->function->upvalues.size()) {
+                currentFrame->function->upvalues[b] = stack[frameBase + a];
+            }
+            DISPATCH();
+        }
+
+        LABEL_CLOSURE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::CLOSURE:
+            #endif
+            uint32_t instruction = ip[-1];
+            int a = Chunk::getA(instruction);
+            int bx = Chunk::getBx(instruction);
+            PomeFunction* funcTemplate = constants[bx].asPomeFunction();
+            
+            // Create a new function object (the closure) from the template
+            PomeFunction* closure = gc.allocate<PomeFunction>();
+            closure->name = funcTemplate->name;
+            closure->parameters = funcTemplate->parameters;
+            closure->chunk = std::make_unique<Chunk>();
+            closure->chunk->code = funcTemplate->chunk->code;
+            closure->chunk->constants = funcTemplate->chunk->constants;
+            closure->chunk->lines = funcTemplate->chunk->lines;
+            closure->upvalueCount = funcTemplate->upvalueCount;
+            
+            // Capture upvalues
+            for (int i = 0; i < closure->upvalueCount; ++i) {
+                uint32_t uvMeta = *ip++; // Read metadata instruction
+                OpCode metaOp = Chunk::getOpCode(uvMeta);
+                int index = Chunk::getB(uvMeta);
+                
+                if (metaOp == OpCode::MOVE) {
+                    // Local from parent frame
+                    PomeValue val = stack[frameBase + index];
+                    closure->upvalues.push_back(val);
+                } else {
+                    // Upvalue from parent function
+                    if (currentFrame->function && index < (int)currentFrame->function->upvalues.size()) {
+                        closure->upvalues.push_back(currentFrame->function->upvalues[index]);
+                    } else {
+                        closure->upvalues.push_back(PomeValue());
+                    }
+                }
+            }
+            
+            stack[frameBase + a] = PomeValue(closure);
             DISPATCH();
         }
 

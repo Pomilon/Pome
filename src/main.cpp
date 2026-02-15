@@ -136,7 +136,9 @@ bool executeSource(const std::string& source) {
                     filename + ".pome",
                     "modules/" + filename + ".pome",
                     "examples/modules/" + filename + ".pome",
-                    "../examples/modules/" + filename + ".pome"
+                    "../examples/modules/" + filename + ".pome",
+                    "test/root_tests/" + filename + ".pome",
+                    "../test/root_tests/" + filename + ".pome"
                 };
                 
                 std::ifstream mFile;

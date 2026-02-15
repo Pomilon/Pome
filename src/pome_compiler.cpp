@@ -3,13 +3,14 @@
 
 namespace Pome {
 
-    Compiler::Compiler(GarbageCollector& gc) : gc(gc), currentChunk(nullptr) {}
+    Compiler::Compiler(GarbageCollector& gc, Compiler* parent) : gc(gc), currentChunk(nullptr), parent(parent) {}
 
     std::unique_ptr<Chunk> Compiler::compile(Program& program) {
         auto scriptChunk = std::make_unique<Chunk>();
         currentChunk = scriptChunk.get();
         freeReg = 0;
         locals.clear();
+        upvalues.clear();
         scopeDepth = 0;
         
         program.accept(*this);
@@ -39,6 +40,37 @@ namespace Pome {
         instr = Chunk::makeAsBx(op, a, offset);
     }
 
+    int Compiler::resolveUpvalue(const std::string& name) {
+        if (parent == nullptr) return -1;
+
+        for (int i = (int)parent->locals.size() - 1; i >= 0; i--) {
+            if (parent->locals[i].name == name) {
+                parent->locals[i].isCaptured = true;
+                return addUpvalue((uint8_t)parent->locals[i].reg, true);
+            }
+        }
+
+        int upvalue = parent->resolveUpvalue(name);
+        if (upvalue != -1) {
+            return addUpvalue((uint8_t)upvalue, false);
+        }
+
+        return -1;
+    }
+
+    int Compiler::addUpvalue(uint8_t index, bool isLocal) {
+        int count = upvalues.size();
+        for (int i = 0; i < count; i++) {
+            Upvalue* upvalue = &upvalues[i];
+            if (upvalue->index == index && upvalue->isLocal == isLocal) {
+                return i;
+            }
+        }
+
+        upvalues.push_back({index, isLocal});
+        return count;
+    }
+
     // ... visitors ...
 
     void Compiler::visit(FunctionDeclStmt &stmt) {
@@ -47,39 +79,35 @@ namespace Pome {
         func->name = stmt.getName();
         func->parameters = stmt.getParams();
         
-        // 2. Compile function body into a new chunk
-        Chunk* prevChunk = currentChunk;
-        int prevFreeReg = freeReg;
-        auto prevLocals = locals;
-        
-        currentChunk = func->chunk.get();
-        freeReg = 0;
-        locals.clear();
+        // 2. Compile function body into a new chunk using a separate compiler
+        Compiler innerCompiler(gc, this);
+        innerCompiler.currentChunk = func->chunk.get();
+        innerCompiler.strictMode = strictMode;
         
         // R0 is reserved for the function itself
-        allocReg(); 
+        innerCompiler.allocReg(); 
         
         // Bind parameters to registers R1, R2...
         for (const auto& param : func->parameters) {
-            locals.push_back({param, 0, allocReg()});
+            innerCompiler.locals.push_back({param, 0, innerCompiler.allocReg()});
         }
         
         for (const auto& s : stmt.getBody()) {
-            s->accept(*this);
-            resetFreeReg();
+            s->accept(innerCompiler);
+            innerCompiler.resetFreeReg();
         }
         
-        emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), stmt.getLine());
+        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), stmt.getLine());
         
-        // 3. Restore state
-        currentChunk = prevChunk;
-        freeReg = prevFreeReg;
-        locals = prevLocals;
-        
-        // 4. Emit LOADK and SETGLOBAL
+        func->upvalueCount = (uint16_t)innerCompiler.upvalues.size();
+
+        // 3. Emit CLOSURE and SETGLOBAL in CURRENT chunk
         int reg = allocReg();
         int constIdx = addConstant(PomeValue(func));
-        emit(Chunk::makeABx(OpCode::LOADK, reg, constIdx), stmt.getLine());
+        emit(Chunk::makeABx(OpCode::CLOSURE, reg, constIdx), stmt.getLine());
+        for (const auto& uv : innerCompiler.upvalues) {
+            emit(Chunk::makeABC(uv.isLocal ? OpCode::MOVE : OpCode::GETUPVAL, 0, uv.index, 0), stmt.getLine());
+        }
         
         PomeString* nameStr = gc.allocate<PomeString>(stmt.getName());
         int nameIdx = addConstant(PomeValue(nameStr));
@@ -193,6 +221,10 @@ namespace Pome {
             int dest = allocReg();
             emit(Chunk::makeABC(OpCode::MOVE, dest, reg, 0), expr.getLine());
             lastResultReg = dest;
+        } else if ((reg = resolveUpvalue(expr.getName())) != -1) {
+            int dest = allocReg();
+            emit(Chunk::makeABC(OpCode::GETUPVAL, dest, reg, 0), expr.getLine());
+            lastResultReg = dest;
         } else {
             // Global Read
             int dest = allocReg();
@@ -257,6 +289,9 @@ namespace Pome {
                 if (localReg != -1) {
                     emit(Chunk::makeABC(OpCode::MOVE, localReg, valReg, 0), expr.getLine());
                     lastResultReg = localReg;
+                } else if ((localReg = resolveUpvalue(ident->getName())) != -1) {
+                    emit(Chunk::makeABC(OpCode::SETUPVAL, valReg, localReg, 0), expr.getLine());
+                    lastResultReg = valReg;
                 } else {
                     if (strictMode) {
                         std::cerr << "Compiler Error: Undefined variable '" << ident->getName() << "' in strict mode." << std::endl;
@@ -353,6 +388,9 @@ namespace Pome {
             if (localReg != -1) {
                 emit(Chunk::makeABC(OpCode::MOVE, localReg, savedValReg, 0), stmt.getLine());
                 lastResultReg = localReg; 
+            } else if ((localReg = resolveUpvalue(ident->getName())) != -1) {
+                emit(Chunk::makeABC(OpCode::SETUPVAL, savedValReg, localReg, 0), stmt.getLine());
+                lastResultReg = savedValReg;
             } else {
                 if (strictMode) {
                     std::cerr << "Compiler Error: Undefined variable '" << ident->getName() << "' in strict mode." << std::endl;
@@ -702,33 +740,37 @@ namespace Pome {
         func->name = expr.getName().empty() ? "anonymous" : expr.getName();
         func->parameters = expr.getParams();
         
-        Chunk* prevChunk = currentChunk;
-        int prevFreeReg = freeReg;
-        auto prevLocals = locals;
-        
-        currentChunk = func->chunk.get();
-        freeReg = 0;
-        locals.clear();
-        
-        allocReg(); // R0
+        // Setup new compiler state for inner function
+        Compiler innerCompiler(gc, this);
+        innerCompiler.currentChunk = func->chunk.get();
+        innerCompiler.strictMode = strictMode;
+
+        // R0
+        innerCompiler.allocReg(); 
         for (const auto& param : func->parameters) {
-            locals.push_back({param, 0, allocReg()});
+            innerCompiler.locals.push_back({param, 0, innerCompiler.allocReg()});
         }
         
         for (const auto& s : expr.getBody()) {
-            s->accept(*this);
-            resetFreeReg();
+            s->accept(innerCompiler);
+            innerCompiler.resetFreeReg();
         }
         
-        emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), expr.getLine());
+        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), expr.getLine());
         
-        currentChunk = prevChunk;
-        freeReg = prevFreeReg;
-        locals = prevLocals;
-        
+        func->upvalueCount = (uint16_t)innerCompiler.upvalues.size();
+
         int reg = allocReg();
         int constIdx = addConstant(PomeValue(func));
-        emit(Chunk::makeABx(OpCode::LOADK, reg, constIdx), expr.getLine());
+        
+        // Emit CLOSURE R(A) K(Bx)
+        emit(Chunk::makeABx(OpCode::CLOSURE, reg, constIdx), expr.getLine());
+        
+        // Emit upvalue details immediately after CLOSURE
+        for (const auto& uv : innerCompiler.upvalues) {
+            emit(Chunk::makeABC(uv.isLocal ? OpCode::MOVE : OpCode::GETUPVAL, 0, uv.index, 0), expr.getLine());
+        }
+
         lastResultReg = reg;
     }
 

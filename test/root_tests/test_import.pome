@@ -1,0 +1,2 @@
+import my_module_root;
+print(my_module_root.x);

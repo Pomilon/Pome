@@ -12,7 +12,7 @@ namespace Pome {
 
     class Compiler : public ASTVisitor {
     public:
-        Compiler(GarbageCollector& gc);
+        Compiler(GarbageCollector& gc, Compiler* parent = nullptr);
         std::unique_ptr<Chunk> compile(Program& program);
         
         // Visitor implementation
@@ -57,12 +57,22 @@ namespace Pome {
             std::string name;
             int depth;
             int reg;
+            bool isCaptured = false;
         };
         
+        struct Upvalue {
+            uint8_t index;
+            bool isLocal;
+        };
+
         std::vector<Local> locals;
+        std::vector<Upvalue> upvalues;
         int scopeDepth = 0;
+        Compiler* parent = nullptr;
         
         int resolveLocal(const std::string& name);
+        int resolveUpvalue(const std::string& name);
+        int addUpvalue(uint8_t index, bool isLocal);
         int addConstant(PomeValue value);
         void emit(Instruction instruction, int line);
         

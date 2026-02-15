@@ -181,6 +181,8 @@ namespace Pome
         const std::vector<std::unique_ptr<Statement>> *body = nullptr; // AST body
         std::unique_ptr<Chunk> chunk; // Compiled bytecode
         Environment* closureEnv = nullptr; 
+        std::vector<PomeValue> upvalues; // Captured variables
+        uint16_t upvalueCount = 0; // Number of upvalues to capture
         class PomeModule* module = nullptr; // Parent module
 
         ObjectType type() const override { return ObjectType::FUNCTION; }

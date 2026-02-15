@@ -14,6 +14,13 @@ namespace Pome {
         for (int offset = 0; offset < (int)chunk.code.size(); ) {
             offset = disassembleInstruction(chunk, offset);
         }
+
+        for (auto& val : chunk.constants) {
+            if (val.isPomeFunction()) {
+                PomeFunction* f = val.asPomeFunction();
+                disassembleChunk(*f->chunk, f->name.c_str());
+            }
+        }
     }
 
     static int simpleInstruction(const char* name, int offset) {
@@ -130,6 +137,28 @@ namespace Pome {
             case OpCode::SETGLOBAL:
                 std::cout << "SETGLOBAL R" << a << " K" << bx << " (" << chunk.constants[bx].toString() << ")" << std::endl;
                 break;
+            case OpCode::GETUPVAL:
+                std::cout << "GETUPVAL  R" << a << " " << b << std::endl;
+                break;
+            case OpCode::SETUPVAL:
+                std::cout << "SETUPVAL  R" << a << " " << b << std::endl;
+                break;
+            case OpCode::CLOSURE: {
+                std::cout << "CLOSURE   R" << a << " K" << bx << " (" << chunk.constants[bx].toString() << ")" << std::endl;
+                PomeValue val = chunk.constants[bx];
+                if (val.isPomeFunction()) {
+                    PomeFunction* f = val.asPomeFunction();
+                    for (int i = 0; i < f->upvalueCount; ++i) {
+                        offset++;
+                        Instruction uvMeta = chunk.code[offset];
+                        OpCode metaOp = Chunk::getOpCode(uvMeta);
+                        int uvIdx = Chunk::getB(uvMeta);
+                        std::cout << std::setw(4) << std::setfill('0') << offset << "      | " 
+                                  << (metaOp == OpCode::MOVE ? "local" : "upval") << " R" << uvIdx << std::endl;
+                    }
+                }
+                return offset + 1;
+            }
             case OpCode::GETTABLE:
                 std::cout << "GETTABLE  R" << a << " R" << b << " R" << c << std::endl;
                 break;
