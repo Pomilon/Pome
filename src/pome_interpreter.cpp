@@ -204,6 +204,14 @@ namespace Pome
                                                    { return nativeType(gc_, args); });
         currentEnvironment_->define("type", PomeValue(typeFn));
 
+        auto pushFn = gc_.allocate<NativeFunction>("push", [this](const std::vector<PomeValue> &args) {
+            if (args.size() < 2 || !args[0].isList()) return PomeValue(std::monostate{});
+            args[0].asList()->elements.push_back(args[1]);
+            gc_.writeBarrier(args[0].asObject(), const_cast<PomeValue&>(args[1]));
+            return PomeValue(std::monostate{});
+        });
+        currentEnvironment_->define("push", PomeValue(pushFn));
+
         auto gcCountFn = gc_.allocate<NativeFunction>("gc_count", [this](const std::vector<PomeValue> &args)
                                                       { return PomeValue((double)gc_.getObjectCount()); });
         currentEnvironment_->define("gc_count", PomeValue(gcCountFn));
