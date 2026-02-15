@@ -43,12 +43,20 @@ print(len(items));  // Output: 5
 
 ### Modifying Lists
 
-Assign new values to elements:
+Assign new values to elements or append to the end:
 
 ```pome
 var numbers = [1, 2, 3];
 numbers[1] = 20;
 print(numbers);  // Output: [1, 20, 3]
+
+// Append using push()
+push(numbers, 4);
+print(numbers);  // Output: [1, 20, 3, 4]
+
+// Append using index
+numbers[len(numbers)] = 5;
+print(numbers);  // Output: [1, 20, 3, 4, 5]
 ```
 
 ### Creating Empty Lists

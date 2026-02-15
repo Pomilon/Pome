@@ -34,7 +34,6 @@ print(len(myList));        // Output: 3
 print(len("hello"));           // Output: 5
 var myTable = {a: 1, b: 2};
 print(len(myTable));     // Output: 2
-print(len(nil));               // Throws runtime error
 ```
 
 Works with:
@@ -43,9 +42,19 @@ Works with:
 - Strings: Number of characters
 - Tables: Number of key-value pairs
 
+### push()
+
+Append a value to a list.
+
+```pome
+var items = [1, 2];
+push(items, 3);
+print(items); // Output: [1, 2, 3]
+```
+
 ### type()
 
-Get the type of a value.
+Get the type of a value as a string.
 
 ```pome
 var myList = [1, 2];
@@ -62,6 +71,24 @@ print(type(myList));           // Output: list
 print(type(myTable));          // Output: table
 print(type(dummy_func));       // Output: function
 print(type(myInstance));       // Output: instance
+```
+
+## Garbage Collection
+
+### gc_count()
+
+Returns the total number of objects currently managed by the garbage collector.
+
+```pome
+print("Objects in memory:", gc_count());
+```
+
+### gc_collect()
+
+Manually triggers a full garbage collection cycle.
+
+```pome
+gc_collect();
 ```
 
 ## Math Module
