@@ -10,10 +10,10 @@ A native extension is a shared library (`.so`, `.dll`, or `.dylib`) that links a
 
 ### 1. The C++ Code
 
-Create a C++ file (e.g., `my_module.cpp`). You need to include `pome_interpreter.h` and define the `pome_init` entry point.
+Create a C++ file (e.g., `my_module.cpp`). You need to include `pome_vm.h` and define the `pome_init` entry point.
 
 ```cpp
-#include "pome_interpreter.h"
+#include "pome_vm.h"
 #include "pome_value.h"
 #include <iostream>
 #include <vector>
@@ -36,7 +36,7 @@ PomeValue nativeAdd(const std::vector<PomeValue>& args) {
 
 // Entry Point
 // This must be extern "C" to prevent name mangling
-extern "C" void pome_init(Interpreter* vm, PomeModule* module) {
+extern "C" void pome_init(VM* vm, PomeModule* module) {
     auto& gc = vm->getGC();
     
     // 1. Create the native function object

@@ -15,17 +15,6 @@ Built entirely in C++17, Pome bridges the gap between the simplicity of dynamic 
 
 > Note: Pome is supposed to be a successor of an old interpreted programming language I made. I improved the underlying architecture and extended its capabilities so I can potentially use it for actual programming tasks and to learn more about programming languages ecosystems.
 
-## 🚀 Performance (v0.2.0-beta)
-
-Pome's modern architecture allows it to significantly outperform traditional AST-walking or stack-based interpreted languages.
-
-| Runtime | 10M Loop Benchmark | Speedup |
-| :--- | :--- | :--- |
-| Python 3.12 | ~1.00s | 1.0x |
-| **Pome v0.2** | **~0.24s** | **~4x Faster** |
-
-*Benchmarks conducted on a compute-intensive loop (`while i < 10M`).*
-
 ## Features
 
 ### Core Language Features
