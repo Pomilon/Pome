@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <cstring>
+#include <dlfcn.h> // Added for dynamic loading
 
 namespace Pome {
 
@@ -13,6 +14,31 @@ namespace Pome {
     }
 
     VM::~VM() {
+    }
+
+    PomeValue VM::loadNativeModule(const std::string& libraryPath, PomeModule* moduleObj) {
+        std::string fullPath = libraryPath;
+        if (fullPath.find('/') == std::string::npos) {
+            fullPath = "./" + fullPath;
+        }
+        void* handle = dlopen(fullPath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
+        if (!handle) {
+            runtimeError("Failed to load native library: " + std::string(dlerror()));
+            return PomeValue();
+        }
+
+        // Symbol name is pome_init
+        typedef void (*InitFunc)(VM*, PomeModule*);
+        InitFunc init = (InitFunc)dlsym(handle, "pome_init");
+        
+        if (!init) {
+            runtimeError("Failed to find pome_init in native library.");
+            dlclose(handle);
+            return PomeValue();
+        }
+
+        init(this, moduleObj);
+        return PomeValue(moduleObj);
     }
 
     void VM::runtimeError(const std::string& message) {
@@ -625,7 +651,11 @@ namespace Pome {
             PomeValue callee = stack[frameBase + a];
             if (callee.isNativeFunction()) {
                 args.clear();
-                for (int i = 1; i < b; ++i) args.push_back(stack[frameBase + a + i]);
+                int startIdx = 1;
+                if (b > 1 && stack[frameBase + a + 1].isModule()) {
+                    startIdx = 2;
+                }
+                for (int i = startIdx; i < b; ++i) args.push_back(stack[frameBase + a + i]);
                 stack[frameBase + a] = callee.asNativeFunction()->call(args);
                 DISPATCH();
             } else if (callee.isPomeFunction()) {
