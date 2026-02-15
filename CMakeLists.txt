@@ -9,13 +9,11 @@ set(LIB_SOURCES
     src/pome_lexer.cpp
     src/pome_parser.cpp
     src/pome_value.cpp
-    src/pome_environment.cpp
-    src/pome_interpreter.cpp
     src/pome_stdlib.cpp
     src/pome_gc.cpp
-    src/pome_importer.cpp
     src/pome_file_utils.cpp
     src/pome_pkg_info.cpp # Added PomePkgInfo source
+    src/pome_module_resolver.cpp # Added ModuleResolver
     src/pome_chunk.cpp    # VM Chunk
     src/pome_compiler.cpp # Bytecode Compiler
     src/pome_vm.cpp       # Virtual Machine

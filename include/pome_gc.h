@@ -8,17 +8,11 @@
 
 namespace Pome {
 
-class Interpreter; // Forward declaration
 class VM; // Forward declaration
 
 class GarbageCollector {
 public:
     explicit GarbageCollector();
-    
-    /**
-     * Set the interpreter instance for root marking
-     */
-    void setInterpreter(Interpreter* interpreter);
     
     /**
      * Set the VM instance for root marking
@@ -81,7 +75,6 @@ public:
     void writeBarrier(PomeObject* parent, PomeValue& child);
 
 private:
-    Interpreter* interpreter_ = nullptr;
     VM* vm_ = nullptr;
     
     PomeObject* youngObjects_ = nullptr;
@@ -99,7 +92,6 @@ private:
     void mark();
     void traceReferences(); // Process gray stack
     void markTable(std::map<PomeValue, PomeValue>& table);
-    void markEnvironmentStore(std::map<std::string, PomeValue>& store);
     void sweep();
 };
 
