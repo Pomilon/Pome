@@ -336,6 +336,9 @@ namespace Pome
         if (closureEnv) {
             gc.markObject(closureEnv);
         }
+        for (auto& val : upvalues) {
+            val.mark(gc);
+        }
         if (chunk) {
             for (auto& val : chunk->constants) {
                 val.mark(gc);

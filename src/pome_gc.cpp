@@ -111,7 +111,10 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated) {
 }
 
 void GarbageCollector::sweep() {
-    // Sweep Young Gen
+    // 1. Sweep Old Gen first
+    sweepList(&oldObjects_, bytesAllocated_);
+
+    // 2. Sweep Young Gen and Promote survivors
     PomeObject** object = &youngObjects_;
     while (*object) {
         if ((*object)->isMarked) {
@@ -124,8 +127,6 @@ void GarbageCollector::sweep() {
             survivor->generation = 1; // Mark as Old
             survivor->next = oldObjects_; // Add to Old
             oldObjects_ = survivor;
-            
-            // Don't advance 'object' pointer because we updated *object to the next node
         } else {
             PomeObject* unreached = *object;
             *object = unreached->next;
@@ -135,8 +136,8 @@ void GarbageCollector::sweep() {
         }
     }
     
-    // Sweep Old Gen
-    sweepList(&oldObjects_, bytesAllocated_);
+    // 3. Clear remembered set
+    rememberedSet_.clear();
     
     /**
      * Adjust nextGC limit
