@@ -218,6 +218,13 @@ bool executeSource(const std::string& source) {
                 return Pome::PomeValue(0.0);
             });
 
+            vm.registerNative("push", [&gc](const std::vector<Pome::PomeValue>& args) {
+                if (args.size() < 2 || !args[0].isList()) return Pome::PomeValue(std::monostate{});
+                args[0].asList()->elements.push_back(args[1]);
+                gc.writeBarrier(args[0].asObject(), const_cast<Pome::PomeValue&>(args[1]));
+                return Pome::PomeValue(std::monostate{});
+            });
+
             vm.registerNative("tonumber", [](const std::vector<Pome::PomeValue>& args) {
                 if (args.empty() || !args[0].isString()) return Pome::PomeValue(std::monostate{});
                 try {
@@ -227,18 +234,27 @@ bool executeSource(const std::string& source) {
                 }
             });
 
-            vm.registerNative("type", [](const std::vector<Pome::PomeValue>& args) {
+            vm.registerNative("type", [&gc](const std::vector<Pome::PomeValue>& args) {
                 if (args.empty()) return Pome::PomeValue(std::monostate{});
-                if (args[0].isNil()) return Pome::PomeValue("nil");
-                if (args[0].isBool()) return Pome::PomeValue("boolean");
-                if (args[0].isNumber()) return Pome::PomeValue("number");
-                if (args[0].isString()) return Pome::PomeValue("string");
-                if (args[0].isList()) return Pome::PomeValue("list");
-                if (args[0].isTable()) return Pome::PomeValue("table");
-                if (args[0].isClass()) return Pome::PomeValue("class");
-                if (args[0].isInstance()) return Pome::PomeValue("instance");
-                if (args[0].isFunction()) return Pome::PomeValue("function");
-                return Pome::PomeValue("unknown");
+                if (args[0].isNil()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("nil"));
+                if (args[0].isBool()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("boolean"));
+                if (args[0].isNumber()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("number"));
+                if (args[0].isString()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("string"));
+                if (args[0].isList()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("list"));
+                if (args[0].isTable()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("table"));
+                if (args[0].isClass()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("class"));
+                if (args[0].isInstance()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("instance"));
+                if (args[0].isFunction()) return Pome::PomeValue(gc.allocate<Pome::PomeString>("function"));
+                return Pome::PomeValue(gc.allocate<Pome::PomeString>("unknown"));
+            });
+
+            vm.registerNative("gc_count", [&gc](const std::vector<Pome::PomeValue>& args) {
+                return Pome::PomeValue((double)gc.getObjectCount());
+            });
+
+            vm.registerNative("gc_collect", [&gc](const std::vector<Pome::PomeValue>& args) {
+                gc.collect();
+                return Pome::PomeValue(std::monostate{});
             });
 
             // Standard Library Modules are now loaded via ModuleLoader
