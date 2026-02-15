@@ -1,0 +1,6 @@
+strict pome;
+
+var x = 10;
+print(x);
+
+// y = 20; // This should error in strict mode if 'var' is missing

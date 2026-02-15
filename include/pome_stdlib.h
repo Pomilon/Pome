@@ -24,6 +24,11 @@ namespace Pome
          */
         PomeModule* createStringModule(GarbageCollector& gc);
 
+        /**
+         * Creates and returns the 'time' module
+         */
+        PomeModule* createTimeModule(GarbageCollector& gc);
+
     }
 }
 

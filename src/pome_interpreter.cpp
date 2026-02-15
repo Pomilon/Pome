@@ -229,6 +229,14 @@ namespace Pome
         gc_.markObject(globalEnvironment_);
 
         /**
+         * Mark environment stack (call stack roots)
+         */
+        for (auto *env : environmentStack_)
+        {
+            gc_.markObject(env);
+        }
+
+        /**
          * Mark export stack
          */
         for (auto *mod : exportStack_)
@@ -477,6 +485,8 @@ namespace Pome
                     args.push_back(evaluateExpression(*argExpr));
                 }
 
+                // callPomeFunction logic handles stack internally now?
+                // No, I need to find callPomeFunction.
                 callPomeFunction(initMethod, args, instance);
             }
 
@@ -547,6 +557,10 @@ namespace Pome
         }
 
         Environment *previousEnvironment = currentEnvironment_;
+        
+        // Push caller's environment to stack so GC can see it even if the new environment doesn't link to it.
+        environmentStack_.push_back(previousEnvironment);
+        
         /**
          * New environment rooted via currentEnvironment_ once assigned
          */
@@ -576,6 +590,7 @@ namespace Pome
         }
 
         currentEnvironment_ = previousEnvironment; // Restore env
+        environmentStack_.pop_back(); // Remove from GC root stack
 
         return returnValue;
     }

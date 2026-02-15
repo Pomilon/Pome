@@ -79,10 +79,10 @@ namespace Pome
         void markRoots();
 
     private:
-        PomeValue lastEvaluatedValue_;
+        PomeValue lastEvaluatedValue_; // Result of last expression evaluation
+        Environment *globalEnvironment_;
         Environment *currentEnvironment_;
-        Environment *globalEnvironment_; // Keep track of global scope
-
+        std::vector<Environment*> environmentStack_; // Keeps track of environments during calls for GC
         GarbageCollector gc_;
         Importer importer_;
 

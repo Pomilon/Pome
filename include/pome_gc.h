@@ -9,6 +9,7 @@
 namespace Pome {
 
 class Interpreter; // Forward declaration
+class VM; // Forward declaration
 
 class GarbageCollector {
 public:
@@ -18,6 +19,11 @@ public:
      * Set the interpreter instance for root marking
      */
     void setInterpreter(Interpreter* interpreter);
+    
+    /**
+     * Set the VM instance for root marking
+     */
+    void setVM(VM* vm);
 
     template<typename T, typename... Args>
     T* allocate(Args&&... args) {
@@ -38,8 +44,9 @@ public:
         }
 
         object->gcSize = sizeof(T);
-        object->next = head_;
-        head_ = object;
+        object->generation = 0; // Young
+        object->next = youngObjects_;
+        youngObjects_ = object;
         bytesAllocated_ += sizeof(T); 
         
         addTemporaryRoot(object); // Protect from immediate collection during this allocate call
@@ -67,17 +74,30 @@ public:
      * Debugging
      */
     size_t getObjectCount() const;
+    
+    /**
+     * Write Barrier: Call this when modifying an object's field/element
+     */
+    void writeBarrier(PomeObject* parent, PomeValue& child);
 
 private:
     Interpreter* interpreter_ = nullptr;
-    PomeObject* head_ = nullptr;
-        size_t bytesAllocated_ = 0;
+    VM* vm_ = nullptr;
+    
+    PomeObject* youngObjects_ = nullptr;
+    PomeObject* oldObjects_ = nullptr;
+    
+    std::vector<PomeObject*> rememberedSet_; // Old objects pointing to Young objects
+    
+    size_t bytesAllocated_ = 0;
     private:
         size_t nextGC_ = 1024 * 1024; // Trigger GC every 1MB initially
 
     std::vector<PomeObject*> tempRoots_;
+    std::vector<PomeObject*> grayStack_; // Iterative marking stack
 
     void mark();
+    void traceReferences(); // Process gray stack
     void markTable(std::map<PomeValue, PomeValue>& table);
     void markEnvironmentStore(std::map<std::string, PomeValue>& store);
     void sweep();

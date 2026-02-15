@@ -34,5 +34,5 @@ Welcome to the comprehensive documentation for the Pome programming language. Th
 
 ---
 
-**Last Updated**: December 2025  
-**Pome Version**: 0.2.0
+**Last Updated**: February 2026  
+**Pome Version**: 0.2.0-beta

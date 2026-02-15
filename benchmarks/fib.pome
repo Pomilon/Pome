@@ -1,0 +1,16 @@
+import time;
+
+// Recursive Fibonacci
+fun fib(n) {
+    if (n < 2) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+var start = time.clock();
+var N = 20;
+print("Calculating Fib(" + N + ")...");
+var res = fib(N);
+var elapsed = time.clock() - start;
+
+print("Fib(" + N + ") = " + res);
+print("Time: " + elapsed + "s");

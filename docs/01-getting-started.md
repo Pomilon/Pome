@@ -12,7 +12,9 @@ Before installing Pome, ensure you have:
 - **CMake**: Version 3.10 or higher
 - **Git**: For cloning the repository
 
-### Building from Source
+### Building and Installing (User-Local)
+
+Pome 0.2 provides a simplified installation script that builds the project and installs it to your local user directory (`~/.pome` and `~/.local/bin`).
 
 1. **Clone the repository**:
 
@@ -21,51 +23,51 @@ Before installing Pome, ensure you have:
    cd Pome
    ```
 
-2. **Create a build directory**:
+2. **Run the installer**:
 
    ```bash
-   mkdir build
-   cd build
+   chmod +x install.sh
+   ./install.sh
    ```
 
-3. **Configure with CMake**:
+3. **Verify installation**:
+
+   Ensure `~/.local/bin` is in your `PATH`, then run:
 
    ```bash
-   cmake ..
-   ```
-
-4. **Build the project**:
-
-   ```bash
-   make
-   ```
-
-   On Windows with MSVC:
-
-   ```bash
-   cmake --build .
-   ```
-
-5. **Verify installation**:
-
-   ```bash
-   ./pome --version
+   pome --version
    ```
 
 ## Running Your First Program
 
-### Hello World
+### The Interactive Shell (REPL)
+
+Simply run `pome` without arguments to enter the interactive shell:
+
+```bash
+pome
+```
+
+You will see the Pome logo and system information. You can type Pome code directly:
+
+```pome
+pome> print("Hello from the VM!");
+Hello from the VM!
+```
+
+### Running a Script
 
 Create a file named `hello.pome`:
 
 ```pome
+strict pome; // Optional: Enable strict mode
 print("Hello, World!");
 ```
 
 Run it:
 
 ```bash
-./pome hello.pome
+pome hello.pome
 ```
 
 Expected output:
@@ -74,102 +76,12 @@ Expected output:
 Hello, World!
 ```
 
-### Interactive Mode
-
-Pome supports reading from files:
-
-```bash
-./pome script.pome
-```
-
-### File Organization
-
-Pome scripts should have the `.pome` file extension. Store your scripts anywhere convenient:
-
-```
-my-project/
-├── main.pome
-├── utils.pome
-└── data/
-    └── config.pome
-```
-
-## Common Tasks
-
-### Running Multiple Files
-
-You can only directly execute one file at a time, but you can import other modules:
-
-```pome
-import utils;
-import config;
-
-// Your code here
-```
-
-See [Module System](08-modules.md) for details on organizing code across files.
-
-### Debugging Your Program
-
-Add `print()` statements to debug:
-
-```pome
-var x = 10;
-print("Debug: x =", x);
-```
-
-### Working with Examples
-
-The repository includes examples in the `examples/` directory:
-
-```bash
-./pome ../examples/demo.pome
-./pome ../examples/test_class.pome
-./pome ../examples/test_stdlib.pome
-```
-
-## Troubleshooting
-
-### CMake not found
-
-Install CMake:
-
-- **Ubuntu/Debian**: `sudo apt-get install cmake`
-- **macOS**: `brew install cmake`
-- **Windows**: Download from <https://cmake.org/download/>
-
-### Compiler not found
-
-Install a C++17 compiler:
-
-- **Ubuntu/Debian**: `sudo apt-get install g++ cmake`
-- **macOS**: `xcode-select --install`
-- **Windows**: Visual Studio Community (includes MSVC)
-
-### Build errors
-
-1. Ensure you have C++17 or later
-2. Try cleaning and rebuilding:
-
-   ```bash
-   cd build
-   rm -rf *
-   cmake ..
-   make
-   ```
-
-### Script won't run
-
-- Check that the file path is correct
-- Verify the file has `.pome` extension
-- Check for syntax errors (see [Language Fundamentals](02-language-fundamentals.md))
-
 ## Next Steps
 
-1. Read [Language Fundamentals](02-language-fundamentals.md) to learn basic syntax
-2. Explore [Control Flow](03-control-flow.md) for conditionals and loops
-3. Check out [examples/](../examples/) for real-world patterns
-4. Learn about [Functions](04-functions.md) and [OOP](05-oop.md)
+1. Read [Language Fundamentals](02-language-fundamentals.md) to learn basic syntax.
+2. Explore [Control Flow](03-control-flow.md) for conditionals and loops.
+3. Check out the [Architecture](12-architecture.md) guide to learn about the Register VM and NaN-Boxing.
+4. Learn about [Functions](04-functions.md) and [OOP](05-oop.md).
 
 ---
 

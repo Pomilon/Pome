@@ -54,6 +54,7 @@ namespace Pome
             FOR_EACH_STMT,
             RETURN_STMT,
             EXPRESSION_STMT,
+            BLOCK_STMT, // Added for BlockStmt
             FUNCTION_DECL_STMT, // Node type for function declarations
             CLASS_DECL_STMT,    // New node type for class declarations
             IMPORT_STMT,
@@ -370,6 +371,18 @@ namespace Pome
         std::vector<std::unique_ptr<Statement>> body_;
     };
 
+    class BlockStmt : public Statement
+    {
+    public:
+        explicit BlockStmt(std::vector<std::unique_ptr<Statement>> statements, int line, int col)
+            : Statement(BLOCK_STMT, line, col), statements_(std::move(statements)) {}
+        const std::vector<std::unique_ptr<Statement>> &getStatements() const { return statements_; }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::vector<std::unique_ptr<Statement>> statements_;
+    };
+
     class ForStmt : public Statement
     {
     public:
@@ -521,6 +534,8 @@ namespace Pome
         void addStatement(std::unique_ptr<Statement> stmt) { statements_.push_back(std::move(stmt)); }
         const std::vector<std::unique_ptr<Statement>> &getStatements() const { return statements_; }
         void accept(ASTVisitor &visitor) override;
+        
+        bool isStrict = false; // Strict mode flag
 
     private:
         std::vector<std::unique_ptr<Statement>> statements_;
@@ -563,6 +578,7 @@ namespace Pome
         virtual void visit(WhileStmt &stmt) = 0;
         virtual void visit(ForStmt &stmt) = 0;
         virtual void visit(ForEachStmt &stmt) = 0;
+        virtual void visit(class BlockStmt &stmt) = 0; // Added
         virtual void visit(ReturnStmt &stmt) = 0;
         virtual void visit(ExpressionStmt &stmt) = 0;
         virtual void visit(FunctionDeclStmt &stmt) = 0;
@@ -601,6 +617,7 @@ namespace Pome
     inline void WhileStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ForStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ForEachStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void BlockStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
     inline void ReturnStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ExpressionStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void FunctionDeclStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }

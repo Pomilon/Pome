@@ -1,0 +1,5 @@
+import export_block_mod;
+
+print("a:", export_block_mod.a);
+print("b:", export_block_mod.b);
+print("sum(1, 2):", export_block_mod.sum(1, 2));

@@ -87,6 +87,20 @@ namespace Pome
     std::unique_ptr<Program> Parser::parseProgram()
     {
         auto program = std::make_unique<Program>();
+        
+        // strict pome;
+        if (currentToken_.type == TokenType::STRICT) {
+            nextToken(); // current=pome
+            if (currentToken_.type == TokenType::IDENTIFIER && currentToken_.value == "pome") {
+                // OK
+            } else {
+                error("Expected 'pome' after 'strict'");
+            }
+            if (!expect(TokenType::SEMICOLON)) return nullptr;
+            nextToken(); // current=start of next statement
+            program->isStrict = true;
+        }
+
         while (currentToken_.type != TokenType::END_OF_FILE)
         {
             auto stmt = parseStatement();
@@ -1322,6 +1336,50 @@ namespace Pome
          */
         nextToken(); // Consume EXPORT
 
+        // Handle export { x, y, z }
+        if (currentToken_.type == TokenType::LBRACE) {
+            nextToken(); // Consume LBRACE
+            std::vector<std::unique_ptr<Statement>> exports;
+            
+            do {
+                if (currentToken_.type != TokenType::IDENTIFIER) {
+                    error("Expected identifier in export list.");
+                    return nullptr;
+                }
+                
+                // Create IdentifierExpr
+                auto identExpr = std::make_unique<IdentifierExpr>(currentToken_.value, currentToken_.line, currentToken_.column);
+                nextToken(); // Consume identifier
+                
+                // Wrap in ExportExpressionStmt
+                // Note: ExportExpressionStmt usually wraps an expression.
+                // We wrap it in ExportStmt? No, ExportStmt wraps a Declaration Stmt.
+                // ExportExpressionStmt is a Statement itself.
+                // But parseExportStatement returns unique_ptr<Statement>.
+                // Wait, ExportExpressionStmt is defined where?
+                // Assuming ExportExpressionStmt(unique_ptr<Expression>, line, col) exists.
+                // Let's check below where I use it.
+                // Yes: return std::make_unique<ExportExpressionStmt>(std::move(expr), line, col);
+                
+                exports.push_back(std::make_unique<ExportExpressionStmt>(std::move(identExpr), line, col));
+                
+            } while (currentToken_.type == TokenType::COMMA && (nextToken(), true));
+            
+            if (currentToken_.type != TokenType::RBRACE) {
+                error("Expected '}' after export list.");
+                return nullptr;
+            }
+            nextToken(); // Consume RBRACE
+            
+            if (currentToken_.type != TokenType::SEMICOLON) {
+                error("Expected ';' after export block.");
+                return nullptr;
+            }
+            nextToken(); // Consume SEMICOLON
+            
+            return std::make_unique<BlockStmt>(std::move(exports), line, col);
+        }
+
         std::unique_ptr<Statement> stmt = nullptr;
         if (currentToken_.type == TokenType::VAR)
         {
@@ -1348,7 +1406,7 @@ namespace Pome
         }
         else
         {
-            error("Expected 'var', 'fun', 'class', or an identifier after 'export', got " + currentToken_.debugString()); // Update error message
+            error("Expected 'var', 'fun', 'class', '{', or an identifier after 'export', got " + currentToken_.debugString()); // Update error message
             return nullptr;
         }
 

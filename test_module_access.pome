@@ -1,0 +1,4 @@
+import module_to_import;
+print("a:", module_to_import.a);
+print("b:", module_to_import.b);
+print("c():", module_to_import.c());
