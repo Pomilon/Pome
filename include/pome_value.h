@@ -2,20 +2,20 @@
 #define POME_VALUE_H
 
 #include <string>
-#include <variant>
 #include <vector>
 #include <map>
 #include <functional>
 #include <memory>
 #include <iostream>
+#include <cstring> // For memcpy
+#include <cstdint> // For uint64_t, uintptr_t
+#include <variant> // For std::monostate
+#include <memory> // Added
 #include "pome_ast.h" // For Program definition
 
 namespace Pome
 {
-
-    /**
-     * Forward declarations
-     */
+    class Chunk; // Forward declaration
     class Environment;
     class Statement;
 
@@ -50,6 +50,7 @@ namespace Pome
          * GC support
          */
         bool isMarked = false;
+        uint8_t generation = 0; // 0 = Young, 1 = Old
         size_t gcSize = 0; // Size of the object for GC accounting
         PomeObject* next = nullptr;
 
@@ -65,20 +66,11 @@ namespace Pome
     class PomeInstance;
     class PomeModule;
 
-    /**
-     * Modified to use raw pointer
-     */
-    using PomeValueType = std::variant<
-        std::monostate,
-        bool,
-        double,
-        PomeObject*>;
-
     class PomeValue
     {
     public:
-        PomeValue();
-        explicit PomeValue(std::monostate);
+        PomeValue(); // Nil
+        explicit PomeValue(std::monostate); // Nil
         explicit PomeValue(bool b);
         explicit PomeValue(double d);
         explicit PomeValue(PomeObject* obj);
@@ -86,9 +78,13 @@ namespace Pome
         /**
          * Type checking
          */
-        bool isNil() const;
-        bool isBool() const;
-        bool isNumber() const;
+        inline bool isNil() const { return value_ == (QNAN | TAG_NIL); }
+        inline bool isBool() const { return value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE); }
+        inline bool isNumber() const { return (value_ & QNAN) != QNAN; }
+        inline bool isObject() const { return (value_ & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT); }
+        
+        // These require full definitions or PomeObject type visibility if checking obj->type()
+        // PomeObject is forward declared but defined above, so it's visible.
         bool isString() const;
         bool isFunction() const;
         bool isPomeFunction() const;
@@ -99,15 +95,34 @@ namespace Pome
         bool isInstance() const;
         bool isModule() const;
         bool isEnvironment() const;
-        bool isObject() const; // Added for convenience in GC marking
 
         /**
          * Getters
          */
-        bool asBool() const;
-        double asNumber() const;
+        inline bool asBool() const {
+            if (value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE))
+                return value_ == (QNAN | TAG_TRUE);
+            if (isNumber())
+                return asNumber() != 0.0;
+            if (value_ == (QNAN | TAG_NIL))
+                return false;
+            return true; // Objects are true
+        }
+
+        inline double asNumber() const {
+            double d;
+            std::memcpy(&d, &value_, sizeof(double));
+            return d;
+        }
+        
+        inline PomeObject* asObject() const {
+            if (isObject()) {
+                return (PomeObject*)(uintptr_t)(value_ & ~(SIGN_BIT | QNAN));
+            }
+            return nullptr;
+        }
+
         const std::string &asString() const;
-        PomeObject* asObject() const;
         PomeFunction* asPomeFunction() const;
         NativeFunction* asNativeFunction() const;
         PomeList* asList() const;
@@ -115,17 +130,28 @@ namespace Pome
         PomeClass* asClass() const;
         PomeInstance* asInstance() const;
         PomeModule* asModule() const;
-        Environment* asEnvironment() const; // Added
+        Environment* asEnvironment() const;
 
         std::string toString() const;
         bool operator==(const PomeValue &other) const;
         bool operator!=(const PomeValue &other) const { return !(*this == other); }
         bool operator<(const PomeValue &other) const;
 
-        void mark(class GarbageCollector& gc) const; // Mark contained object for GC traversal
+        void mark(class GarbageCollector& gc) const;
+
+        // Public for internal use if needed, but try to use constructors
+        uint64_t getRaw() const { return value_; }
 
     private:
-        PomeValueType value_;
+        uint64_t value_;
+
+        // NaN Boxing Constants
+        static constexpr uint64_t QNAN = 0x7ffc000000000000;
+        static constexpr uint64_t SIGN_BIT = 0x8000000000000000;
+
+        static constexpr uint64_t TAG_NIL = 1;
+        static constexpr uint64_t TAG_FALSE = 2;
+        static constexpr uint64_t TAG_TRUE = 3;
     };
 
     /**
@@ -149,10 +175,13 @@ namespace Pome
     class PomeFunction : public PomeObject
     {
     public:
+        PomeFunction(); // Need constructor to init chunk
         std::string name;
         std::vector<std::string> parameters;
-        const std::vector<std::unique_ptr<Statement>> *body; // Pointer to AST body
+        const std::vector<std::unique_ptr<Statement>> *body = nullptr; // AST body
+        std::unique_ptr<Chunk> chunk; // Compiled bytecode
         Environment* closureEnv = nullptr; 
+        class PomeModule* module = nullptr; // Parent module
 
         ObjectType type() const override { return ObjectType::FUNCTION; }
         std::string toString() const override { return "<fn " + name + ">"; }
@@ -189,6 +218,7 @@ namespace Pome
     public:
         std::vector<PomeValue> elements;
 
+        PomeList() = default;
         explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;

@@ -1,0 +1,15 @@
+import time;
+import math;
+
+// Heavy loop arithmetic
+var start = time.clock();
+var total = 0;
+
+print("Running 1M iterations...");
+for (var i = 0; i < 1000000; i = i + 1) {
+    total = total + math.sin(i) * math.cos(i);
+}
+
+var elapsed = time.clock() - start;
+print("Total: " + total);
+print("Time: " + elapsed + "s");

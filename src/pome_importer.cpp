@@ -3,6 +3,7 @@
 #include "../include/pome_interpreter.h"
 #include "../include/pome_lexer.h"
 #include "../include/pome_parser.h"
+#include "../include/pome_stdlib.h" // Added standard library support
 #include "../include/pome_environment.h"  // For Environment
 #include "../include/pome_file_utils.hpp" // For FileUtils
 #include "../include/pome_pkg_info.h"     // For PomePkgInfo
@@ -111,6 +112,38 @@ namespace Pome
         if (isCached(logicalPath))
         {
             return moduleCache_[logicalPath];
+        }
+
+        /**
+         * Check for built-in modules
+         */
+        if (logicalPath == "math")
+        {
+            PomeModule* module = StdLib::createMathModule(interpreter_.getGC());
+            PomeValue val(module);
+            moduleCache_[logicalPath] = val;
+            return val;
+        }
+        if (logicalPath == "io")
+        {
+            PomeModule* module = StdLib::createIOModule(interpreter_.getGC());
+            PomeValue val(module);
+            moduleCache_[logicalPath] = val;
+            return val;
+        }
+        if (logicalPath == "string")
+        {
+            PomeModule* module = StdLib::createStringModule(interpreter_.getGC());
+            PomeValue val(module);
+            moduleCache_[logicalPath] = val;
+            return val;
+        }
+        if (logicalPath == "time")
+        {
+            PomeModule* module = StdLib::createTimeModule(interpreter_.getGC());
+            PomeValue val(module);
+            moduleCache_[logicalPath] = val;
+            return val;
         }
 
         ScopedLoadingModule loader(loadingModules_, logicalPath);

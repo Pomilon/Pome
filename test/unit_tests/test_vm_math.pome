@@ -1,0 +1,8 @@
+print(10 + 20);
+print(10 * 20);
+print(100 / 2);
+print(30 - 5);
+var a = 10;
+var b = 20;
+print(a + b);
+print(a * b);

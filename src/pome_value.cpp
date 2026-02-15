@@ -1,14 +1,17 @@
 #include "../include/pome_value.h"
 #include "../include/pome_environment.h"
-#include "../include/pome_gc.h" // For GarbageCollector definition
+#include "../include/pome_gc.h"
+#include "../include/pome_chunk.h" // Added
+#include <iostream>
 #include <sstream>
-#include <iomanip>
+#include <algorithm>
 
 namespace Pome
 {
+    PomeFunction::PomeFunction() : chunk(std::make_unique<Chunk>()) {}
 
     /**
-     * --- NativeFunction Implementation ---
+     * PomeValue implementation
      */
     PomeValue NativeFunction::call(const std::vector<PomeValue> &args)
     {
@@ -16,195 +19,138 @@ namespace Pome
     }
 
     /**
-     * --- PomeValue Implementation ---
+     * --- PomeValue Implementation (NaN Boxing) ---
      */
 
-    PomeValue::PomeValue() : value_(std::monostate{}) {}
-    PomeValue::PomeValue(std::monostate) : value_(std::monostate{}) {}
-    PomeValue::PomeValue(bool b) : value_(b) {}
-    PomeValue::PomeValue(double d) : value_(d) {}
-    PomeValue::PomeValue(PomeObject* obj) : value_(obj) {}
+    PomeValue::PomeValue() : value_(QNAN | TAG_NIL) {}
+    PomeValue::PomeValue(std::monostate) : value_(QNAN | TAG_NIL) {}
+    
+    PomeValue::PomeValue(bool b) : value_(b ? (QNAN | TAG_TRUE) : (QNAN | TAG_FALSE)) {}
+    
+    PomeValue::PomeValue(double d)
+    {
+        std::memcpy(&value_, &d, sizeof(double));
+    }
+    
+    PomeValue::PomeValue(PomeObject* obj)
+    {
+        value_ = (uint64_t)(uintptr_t)obj | QNAN | SIGN_BIT;
+    }
 
     /**
      * Type checking
      */
-    bool PomeValue::isNil() const { return std::holds_alternative<std::monostate>(value_); }
-    bool PomeValue::isBool() const { return std::holds_alternative<bool>(value_); }
-    bool PomeValue::isNumber() const { return std::holds_alternative<double>(value_); }
+    // isNil, isBool, isNumber, isObject moved to header
 
     bool PomeValue::isString() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::STRING;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::STRING;
     }
 
     bool PomeValue::isFunction() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::FUNCTION || (*obj)->type() == ObjectType::NATIVE_FUNCTION;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && (obj->type() == ObjectType::FUNCTION || obj->type() == ObjectType::NATIVE_FUNCTION);
     }
 
     bool PomeValue::isPomeFunction() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::FUNCTION;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::FUNCTION;
     }
 
     bool PomeValue::isNativeFunction() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::NATIVE_FUNCTION;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::NATIVE_FUNCTION;
     }
 
     bool PomeValue::isList() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::LIST;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::LIST;
     }
 
     bool PomeValue::isTable() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::TABLE;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::TABLE;
     }
 
     bool PomeValue::isClass() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::CLASS;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::CLASS;
     }
 
     bool PomeValue::isInstance() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::INSTANCE;
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::INSTANCE;
     }
 
     bool PomeValue::isModule() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::MODULE; 
-        }
-        return false;
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::MODULE;
     }
 
     bool PomeValue::isEnvironment() const
     {
-        if (auto obj = std::get_if<PomeObject*>(&value_))
-        {
-            return (*obj)->type() == ObjectType::ENVIRONMENT; 
-        }
-        return false;
-    }
-
-    bool PomeValue::isObject() const {
-        return std::holds_alternative<PomeObject*>(value_);
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::ENVIRONMENT;
     }
 
     /**
      * Getters
      */
-    bool PomeValue::asBool() const
-    {
-        if (isBool())
-            return std::get<bool>(value_);
-        if (isNumber())
-            return std::get<double>(value_) != 0.0;
-        if (isNil())
-            return false;
-        return true;
-    }
-
-    double PomeValue::asNumber() const
-    {
-        return std::get<double>(value_);
-    }
+    // asBool, asNumber, asObject moved to header
 
     const std::string &PomeValue::asString() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeString*>(obj)->getValue();
-    }
-
-    PomeObject* PomeValue::asObject() const 
-    {
-        if (std::holds_alternative<PomeObject*>(value_))
-            return std::get<PomeObject*>(value_);
-        return nullptr;
+        auto obj = static_cast<PomeString*>(asObject());
+        return obj->getValue();
     }
 
     PomeFunction* PomeValue::asPomeFunction() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeFunction*>(obj);
+        return static_cast<PomeFunction*>(asObject());
     }
 
     NativeFunction* PomeValue::asNativeFunction() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<NativeFunction*>(obj);
+        return static_cast<NativeFunction*>(asObject());
     }
 
     PomeList* PomeValue::asList() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeList*>(obj);
+        return static_cast<PomeList*>(asObject());
     }
 
     PomeTable* PomeValue::asTable() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeTable*>(obj);
+        return static_cast<PomeTable*>(asObject());
     }
 
     PomeClass* PomeValue::asClass() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeClass*>(obj);
+        return static_cast<PomeClass*>(asObject());
     }
 
     PomeInstance* PomeValue::asInstance() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeInstance*>(obj);
+        return static_cast<PomeInstance*>(asObject());
     }
 
     PomeModule* PomeValue::asModule() const
     {
-        if (!isModule()) return nullptr;
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<PomeModule*>(obj);
+        return static_cast<PomeModule*>(asObject());
     }
 
     Environment* PomeValue::asEnvironment() const
     {
-        auto obj = std::get<PomeObject*>(value_);
-        return static_cast<Environment*>(obj);
+        return static_cast<Environment*>(asObject());
     }
 
     std::string PomeValue::toString() const
@@ -212,11 +158,11 @@ namespace Pome
         if (isNil())
             return "nil";
         if (isBool())
-            return std::get<bool>(value_) ? "true" : "false";
+            return asBool() ? "true" : "false";
         if (isNumber())
         {
             std::stringstream ss;
-            double d = std::get<double>(value_);
+            double d = asNumber();
             if (d == static_cast<long long>(d))
             {
                 ss << static_cast<long long>(d);
@@ -227,76 +173,71 @@ namespace Pome
             }
             return ss.str();
         }
-        if (std::holds_alternative<PomeObject*>(value_))
+        if (isObject())
         {
-            return std::get<PomeObject*>(value_)->toString();
+            return asObject()->toString();
         }
         return "unknown";
     }
 
     bool PomeValue::operator==(const PomeValue &other) const
     {
-        if (value_.index() != other.value_.index())
-            return false;
-        if (isNil())
-            return true;
-        if (isBool())
-            return std::get<bool>(value_) == std::get<bool>(other.value_);
-        if (isNumber())
-            return std::get<double>(value_) == std::get<double>(other.value_);
+        // Fast path: exact bit equality
+        if (value_ == other.value_) return true;
 
-        auto obj1 = std::get<PomeObject*>(value_);
-        auto obj2 = std::get<PomeObject*>(other.value_);
-
-        if (obj1 == obj2)
-            return true;
-            
-        if (obj1 == nullptr || obj2 == nullptr)
-            return false;
-
-        if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
-        {
-            return static_cast<PomeString*>(obj1)->getValue() ==
-                   static_cast<PomeString*>(obj2)->getValue();
+        // If both are numbers, use double equality (handles -0.0 == 0.0)
+        if (isNumber() && other.isNumber()) {
+            return asNumber() == other.asNumber();
         }
+
+        // If types are different, they are not equal (unless we want loose equality, but Pome seems strict-ish)
+        // Check if one is object and other is not
+        if (isObject() != other.isObject()) return false;
+        
+        // If both are objects (and bits were different), we might need deep comparison for Strings
+        if (isObject()) {
+            PomeObject* obj1 = asObject();
+            PomeObject* obj2 = other.asObject();
+            
+            if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
+            {
+                return static_cast<PomeString*>(obj1)->getValue() ==
+                       static_cast<PomeString*>(obj2)->getValue();
+            }
+        }
+
         return false;
     }
 
     bool PomeValue::operator<(const PomeValue &other) const
     {
-        if (value_.index() != other.value_.index())
-            return value_.index() < other.value_.index();
-
-        if (isBool())
-            return std::get<bool>(value_) < std::get<bool>(other.value_);
-        if (isNumber())
-            return std::get<double>(value_) < std::get<double>(other.value_);
-
-        if (std::holds_alternative<PomeObject*>(value_))
-        {
-            auto obj1 = std::get<PomeObject*>(value_);
-            auto obj2 = std::get<PomeObject*>(other.value_);
-
-            /**
-             * Strict ordering by ObjectType first
-             */
-            if (obj1->type() != obj2->type())
-            {
-                return obj1->type() < obj2->type();
-            }
-
-            /**
-             * Same type comparison
-             */
-            if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
-            {
-                return static_cast<PomeString*>(obj1)->getValue() <
-                       static_cast<PomeString*>(obj2)->getValue();
-            }
-            // For other object types, default to pointer comparison or implement specific logic
-            return obj1 < obj2; // Default to pointer comparison for other objects
-        }
-        return false; // nil == nil
+        // 1. Same types
+        if (isNumber() && other.isNumber()) return asNumber() < other.asNumber();
+        if (isString() && other.isString()) return asString() < other.asString();
+        if (isBool() && other.isBool()) return asBool() < other.asBool();
+        if (isNil() && other.isNil()) return false;
+        
+        // 2. Different types: use a stable order
+        // Order: Nil < Bool < Number < String < List < Table < Function < Class < Instance
+        auto typeOrder = [](const PomeValue& v) {
+            if (v.isNil()) return 0;
+            if (v.isBool()) return 1;
+            if (v.isNumber()) return 2;
+            if (v.isString()) return 3;
+            if (v.isList()) return 4;
+            if (v.isTable()) return 5;
+            if (v.isFunction()) return 6;
+            if (v.isClass()) return 7;
+            if (v.isInstance()) return 8;
+            return 9;
+        };
+        
+        int t1 = typeOrder(*this);
+        int t2 = typeOrder(other);
+        if (t1 != t2) return t1 < t2;
+        
+        // Same type but complex object: compare pointers
+        return value_ < other.value_;
     }
 
     void PomeValue::mark(GarbageCollector& gc) const {
@@ -392,10 +333,14 @@ namespace Pome
      * User-defined Function Object
      */
     void PomeFunction::markChildren(GarbageCollector& gc) {
-        if (closureEnv) { // closureEnv is Environment*
+        if (closureEnv) {
             gc.markObject(closureEnv);
         }
-        // Body (AST nodes) are not PomeObjects managed by GC
+        if (chunk) {
+            for (auto& val : chunk->constants) {
+                val.mark(gc);
+            }
+        }
     }
 
     /**

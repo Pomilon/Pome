@@ -1,0 +1,29 @@
+name: CMake Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build_new -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build_new --config Release
+
+    - name: Run Tests
+      run: python3 tools/pome_test_runner.py
+
+    - name: Run Benchmarks
+      run: python3 tools/pome_bench.py
+
+    - name: Pome vs Python Benchmark
+      run: python3 tools/bench_vs_python.py

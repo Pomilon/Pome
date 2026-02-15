@@ -1,0 +1,10 @@
+print("Starting Local Loop Benchmark...");
+fun run() {
+    var i = 0;
+    var limit = 10000000;
+    while (i < limit) {
+        i = i + 1;
+    }
+}
+run();
+print("Done.");

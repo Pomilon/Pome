@@ -4,13 +4,19 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <chrono>
+#include <cmath>
+#include <algorithm> // Added for std::replace
 
 #include "pome_lexer.h"
 #include "pome_parser.h"
-#include "pome_interpreter.h"
+#include "pome_compiler.h"
+#include "pome_vm.h"
+#include "pome_chunk.h"
+#include "pome_stdlib.h" // Added for stdlib
 
 // --- CONFIGURATION ---
-const std::string POME_VERSION = "0.1.0";
+const std::string POME_VERSION = "0.2.0-beta";
 
 // ANSI Color Codes
 const std::string RESET   = "\033[0m";
@@ -99,16 +105,124 @@ void printNeofetchStyle() {
     std::cout << "\n"; // Bottom margin
 }
 
+// --- GLOBAL STATE ---
+namespace Pome {
+    class VM;
+}
+Pome::VM* currentVM = nullptr;
+
 // --- CORE EXECUTION LOGIC ---
 
-bool executeSource(const std::string& source, Pome::Interpreter& interpreter) {
+bool executeSource(const std::string& source) {
     try {
         Pome::Lexer lexer(source);
         Pome::Parser parser(lexer);
         std::unique_ptr<Pome::Program> program = parser.parseProgram();
         
         if (program) {
-            interpreter.interpret(*program);
+            Pome::GarbageCollector gc;
+            
+            Pome::ModuleLoader loader = [&](const std::string& moduleName) -> Pome::PomeValue {
+                if (moduleName == "math") return Pome::PomeValue(Pome::StdLib::createMathModule(gc));
+                if (moduleName == "io") return Pome::PomeValue(Pome::StdLib::createIOModule(gc));
+                if (moduleName == "string") return Pome::PomeValue(Pome::StdLib::createStringModule(gc));
+                if (moduleName == "time") return Pome::PomeValue(Pome::StdLib::createTimeModule(gc));
+
+                std::string path;
+                std::string filename = moduleName;
+                std::replace(filename.begin(), filename.end(), '.', '/');
+
+                std::vector<std::string> searchPaths = {
+                    filename + ".pome",
+                    "modules/" + filename + ".pome",
+                    "examples/modules/" + filename + ".pome",
+                    "../examples/modules/" + filename + ".pome"
+                };
+                
+                std::ifstream mFile;
+                for (const auto& p : searchPaths) {
+                    mFile.open(p);
+                    if (mFile.is_open()) {
+                        path = p;
+                        break;
+                    }
+                    mFile.clear();
+                }
+                
+                if (!mFile.is_open()) return Pome::PomeValue();
+                
+                std::stringstream mBuffer;
+                mBuffer << mFile.rdbuf();
+                mFile.close();
+                
+                // 2. Parse
+                Pome::Lexer mLexer(mBuffer.str());
+                Pome::Parser mParser(mLexer);
+                auto mProgram = mParser.parseProgram();
+                if (!mProgram) return Pome::PomeValue();
+                
+                // 3. Compile
+                Pome::Compiler mCompiler(gc);
+                auto mChunk = mCompiler.compile(*mProgram);
+                
+                // 4. Execute in a new module object
+                Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
+                
+                extern Pome::VM* currentVM; 
+                if (currentVM) {
+                    currentVM->interpret(mChunk.get(), moduleObj);
+                }
+                
+                return Pome::PomeValue(moduleObj);
+            };
+
+            Pome::Compiler compiler(gc);
+            auto chunk = compiler.compile(*program);
+            
+            Pome::VM vm(gc, loader);
+            
+            // Set global VM pointer for the loader
+            extern Pome::VM* currentVM;
+            currentVM = &vm;
+
+            // Register Standard Functions
+            vm.registerGlobal("PI", Pome::PomeValue(3.141592653589793));
+            
+            vm.registerNative("len", [](const std::vector<Pome::PomeValue>& args) {
+                if (args.empty()) return Pome::PomeValue(0.0);
+                if (args[0].isString()) return Pome::PomeValue((double)args[0].asString().length());
+                if (args[0].isList()) return Pome::PomeValue((double)args[0].asList()->elements.size());
+                if (args[0].isTable()) return Pome::PomeValue((double)args[0].asTable()->elements.size());
+                return Pome::PomeValue(0.0);
+            });
+
+            vm.registerNative("tonumber", [](const std::vector<Pome::PomeValue>& args) {
+                if (args.empty() || !args[0].isString()) return Pome::PomeValue(std::monostate{});
+                try {
+                    return Pome::PomeValue(std::stod(args[0].asString()));
+                } catch (...) {
+                    return Pome::PomeValue(std::monostate{});
+                }
+            });
+
+            vm.registerNative("type", [](const std::vector<Pome::PomeValue>& args) {
+                if (args.empty()) return Pome::PomeValue(std::monostate{});
+                if (args[0].isNil()) return Pome::PomeValue("nil");
+                if (args[0].isBool()) return Pome::PomeValue("boolean");
+                if (args[0].isNumber()) return Pome::PomeValue("number");
+                if (args[0].isString()) return Pome::PomeValue("string");
+                if (args[0].isList()) return Pome::PomeValue("list");
+                if (args[0].isTable()) return Pome::PomeValue("table");
+                if (args[0].isClass()) return Pome::PomeValue("class");
+                if (args[0].isInstance()) return Pome::PomeValue("instance");
+                if (args[0].isFunction()) return Pome::PomeValue("function");
+                return Pome::PomeValue("unknown");
+            });
+
+            // Standard Library Modules are now loaded via ModuleLoader
+
+            vm.interpret(chunk.get());
+            if (vm.hasError) return false;
         }
         return true;
     } catch (const std::exception& e) {
@@ -118,14 +232,11 @@ bool executeSource(const std::string& source, Pome::Interpreter& interpreter) {
 }
 
 void runPrompt() {
-    printNeofetchStyle(); // Show the cool UI
+    printNeofetchStyle();
 
-    Pome::Interpreter interpreter; 
     std::string line;
-
     while (true) {
-        std::cout << RED << "pome" << RESET << "> "; // Colored prompt
-        
+        std::cout << RED << "pome" << RESET << "> ";
         if (!std::getline(std::cin, line)) {
             std::cout << "\nGoodbye!" << std::endl;
             break;
@@ -134,7 +245,7 @@ void runPrompt() {
         if (line == "exit") break;
         if (line.empty()) continue;
 
-        executeSource(line, interpreter);
+        executeSource(line);
     }
 }
 
@@ -149,8 +260,7 @@ int runFile(const std::string& path) {
     buffer << file.rdbuf();
     std::string source = buffer.str();
 
-    Pome::Interpreter interpreter;
-    if (!executeSource(source, interpreter)) return 65;
+    if (!executeSource(source)) return 65;
     return 0;
 }
 

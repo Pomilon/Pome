@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(pome LANGUAGES CXX)
+project(pome VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -16,6 +16,9 @@ set(LIB_SOURCES
     src/pome_importer.cpp
     src/pome_file_utils.cpp
     src/pome_pkg_info.cpp # Added PomePkgInfo source
+    src/pome_chunk.cpp    # VM Chunk
+    src/pome_compiler.cpp # Bytecode Compiler
+    src/pome_vm.cpp       # Virtual Machine
 )
 
 # Create the shared library
@@ -47,6 +50,20 @@ target_link_libraries(pome PRIVATE libpome)
 
 # Add include directories for the executable (so it can find headers to interface with libpome)
 target_include_directories(pome PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# --- LSP ---
+add_executable(pome-lsp src/pome_lsp.cpp)
+target_include_directories(pome-lsp PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/external
+)
+
+# --- Formatter ---
+add_executable(pome-fmt src/pome_fmt.cpp)
+target_link_libraries(pome-fmt PRIVATE libpome)
+target_include_directories(pome-fmt PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 

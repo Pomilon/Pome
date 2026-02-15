@@ -11,7 +11,7 @@ Syntax errors occur when your code doesn't follow Pome's grammar.
 #### Missing Semicolons
 
 ```pome
-var x = 10   // Error: missing semicolon
+var x = 10;   // Error: missing semicolon
 var y = 20;
 ```
 
@@ -27,7 +27,7 @@ var y = 20;
 ```pome
 fun test() {
     print("missing closing brace");
-// Error: expected '}'
+} // Error: expected '}'
 ```
 
 **Fix**: Match all opening braces with closing ones

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pome
+Comment=Pome Programming Language Interpreter
+Exec=pome
+Icon=pome
+Terminal=true
+Categories=Development;

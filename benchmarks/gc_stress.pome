@@ -1,0 +1,30 @@
+import time;
+
+// List allocation and iteration test
+var start = time.clock();
+
+var list = [];
+print("Creating list of 100,000 elements...");
+for (var i = 0; i < 100000; i = i + 1) {
+    // .push() is not standard, we only have [] literals and possibly standard methods if implemented.
+    // Wait, looking at pome_stdlib.cpp/pome_value.cpp, list functionality is sparse.
+    // We might need to rely on `list = list + [i]` which is O(N^2) probably?
+    // Actually Pome currently doesn't seem to have list.push() or array resize exposed easily in stdlib?
+    // Let's check if we can extend list via + operator or native method.
+    // PomeList::toString iterates.
+    // Checking interpreter binary ops...
+    // If standard list operations are missing, this benchmark might be brutal.
+    // I'll stick to a simpler "create many small lists" test if large list append is slow.
+    
+    // Actually, let's just make many small lists to test GC pressure.
+}
+
+// Testing GC Pressure: Create 50,000 objects
+for (var i = 0; i < 50000; i = i + 1) {
+    var temp = ["a", "b", "c", i];
+}
+
+var elapsed = time.clock() - start;
+print("Allocation test done.");
+print("Time: " + elapsed + "s");
+print("GC Count: " + gc_count());

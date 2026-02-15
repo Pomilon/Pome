@@ -11,7 +11,7 @@ namespace Pome
     std::string Token::toString(TokenType type)
     {
         static const std::map<TokenType, std::string> tokenTypeNames = {
-            {TokenType::FUNCTION, "FUNCTION"}, {TokenType::IF, "IF"}, {TokenType::ELSE, "ELSE"}, {TokenType::WHILE, "WHILE"}, {TokenType::FOR, "FOR"}, {TokenType::RETURN, "RETURN"}, {TokenType::TRUE, "TRUE"}, {TokenType::FALSE, "FALSE"}, {TokenType::NIL, "NIL"}, {TokenType::IMPORT, "IMPORT"}, {TokenType::FROM, "FROM"}, {TokenType::EXPORT, "EXPORT"}, {TokenType::VAR, "VAR"}, {TokenType::CLASS, "CLASS"}, {TokenType::THIS, "THIS"}, // Added for OOP
+            {TokenType::FUNCTION, "FUNCTION"}, {TokenType::IF, "IF"}, {TokenType::ELSE, "ELSE"}, {TokenType::WHILE, "WHILE"}, {TokenType::FOR, "FOR"}, {TokenType::RETURN, "RETURN"}, {TokenType::TRUE, "TRUE"}, {TokenType::FALSE, "FALSE"}, {TokenType::NIL, "NIL"}, {TokenType::IMPORT, "IMPORT"}, {TokenType::FROM, "FROM"}, {TokenType::EXPORT, "EXPORT"}, {TokenType::VAR, "VAR"}, {TokenType::CLASS, "CLASS"}, {TokenType::THIS, "THIS"}, {TokenType::STRICT, "STRICT"},
 
             {TokenType::PLUS, "PLUS"},
             {TokenType::MINUS, "MINUS"},
@@ -168,7 +168,8 @@ namespace Pome
          * Check for keywords
          */
         static const std::map<std::string, TokenType> keywords = {
-            {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"this", TokenType::THIS}, // Added for OOP
+            {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"this", TokenType::THIS}, 
+            {"strict", TokenType::STRICT},
             {"and", TokenType::AND},
             {"or", TokenType::OR},
             {"not", TokenType::NOT}};

@@ -3,17 +3,14 @@
 
 #include <string>
 #include <vector>
-#include <stdexcept>
-#include <map> // For static map in toString
+#include <map>
 
 namespace Pome
 {
 
     enum class TokenType
     {
-        /**
-         * Keywords
-         */
+        // Keywords
         FUNCTION,
         IF,
         ELSE,
@@ -28,17 +25,15 @@ namespace Pome
         EXPORT,
         VAR,
         CLASS,
-        THIS, // Added for OOP
+        THIS,
+        STRICT, 
 
-        /**
-         * Operators
-         */
+        // Operators
         PLUS,
         MINUS,
         MULTIPLY,
         DIVIDE,
         MODULO,
-        CARET, // ^ (Exponentiation)
         ASSIGN,
         EQ,
         NE,
@@ -49,11 +44,10 @@ namespace Pome
         AND,
         OR,
         NOT,
-        QUESTION, // Added for ternary operator
+        QUESTION,
+        CARET, // Added
 
-        /**
-         * Delimiters
-         */
+        // Delimiters
         LPAREN,
         RPAREN,
         LBRACE,
@@ -65,16 +59,12 @@ namespace Pome
         COLON,
         SEMICOLON,
 
-        /**
-         * Literals
-         */
+        // Literals
         IDENTIFIER,
         NUMBER,
         STRING,
 
-        /**
-         * Special
-         */
+        // End of File
         END_OF_FILE,
         UNKNOWN
     };
@@ -86,36 +76,29 @@ namespace Pome
         int line;
         int column;
 
-        /**
-         * Static helper to convert TokenType to string for debugging/error reporting
-         */
         static std::string toString(TokenType type);
-
-        /**
-         * Member function to get a detailed string representation of the token
-         */
         std::string debugString() const;
     };
 
     class Lexer
     {
     public:
-        explicit Lexer(const std::string &source);
+        Lexer(const std::string &source);
         Token getNextToken();
+        char peek(); 
 
     private:
-        const std::string &source;
+        std::string source;
         size_t currentPos;
         int currentLine;
         int currentCol;
 
-        char peek();
-        char advance();
-        void skipWhitespace();
         Token readIdentifier();
         Token readNumber();
         Token readString();
         Token makeToken(TokenType type, const std::string &value);
+        void skipWhitespace();
+        char advance();
     };
 
 } // namespace Pome
