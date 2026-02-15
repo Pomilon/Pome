@@ -16,7 +16,6 @@
 namespace Pome
 {
     class Chunk; // Forward declaration
-    class Environment;
     class Statement;
 
     /**
@@ -32,7 +31,6 @@ namespace Pome
         CLASS,
         INSTANCE,
         MODULE,
-        ENVIRONMENT,
         NATIVE_OBJECT // Added for native wrapper objects
     };
 
@@ -94,7 +92,6 @@ namespace Pome
         bool isClass() const;
         bool isInstance() const;
         bool isModule() const;
-        bool isEnvironment() const;
 
         /**
          * Getters
@@ -130,7 +127,6 @@ namespace Pome
         PomeClass* asClass() const;
         PomeInstance* asInstance() const;
         PomeModule* asModule() const;
-        Environment* asEnvironment() const;
 
         std::string toString() const;
         bool operator==(const PomeValue &other) const;
@@ -180,7 +176,6 @@ namespace Pome
         std::vector<std::string> parameters;
         const std::vector<std::unique_ptr<Statement>> *body = nullptr; // AST body
         std::unique_ptr<Chunk> chunk; // Compiled bytecode
-        Environment* closureEnv = nullptr; 
         std::vector<PomeValue> upvalues; // Captured variables
         uint16_t upvalueCount = 0; // Number of upvalues to capture
         class PomeModule* module = nullptr; // Parent module

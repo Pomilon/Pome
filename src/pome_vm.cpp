@@ -488,7 +488,11 @@ namespace Pome {
             if (moduleCache.count(moduleName)) {
                 stack[frameBase + a] = moduleCache[moduleName];
             } else if (moduleLoader) {
-                stack[frameBase + a] = moduleLoader(moduleName);
+                PomeValue mod = moduleLoader(moduleName);
+                if (!mod.isNil()) {
+                    moduleCache[moduleName] = mod;
+                }
+                stack[frameBase + a] = mod;
             } else {
                 stack[frameBase + a] = PomeValue();
             }

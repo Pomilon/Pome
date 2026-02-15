@@ -1,15 +1,10 @@
 #include "../include/pome_gc.h"
-#include "../include/pome_interpreter.h"
 #include "../include/pome_vm.h" // Added
 #include <iostream>
 
 namespace Pome {
 
 GarbageCollector::GarbageCollector() {}
-
-void GarbageCollector::setInterpreter(Interpreter* interpreter) {
-    interpreter_ = interpreter;
-}
 
 void GarbageCollector::setVM(VM* vm) {
     vm_ = vm;
@@ -32,13 +27,6 @@ void GarbageCollector::writeBarrier(PomeObject* parent, PomeValue& child) {
 }
 
 void GarbageCollector::mark() {
-    /**
-     * 1. Mark roots from interpreter
-     */
-    if (interpreter_) {
-        interpreter_->markRoots();
-    }
-    
     /**
      * 2. Mark roots from VM
      */
@@ -80,12 +68,6 @@ void GarbageCollector::markValue(PomeValue& value) {
 void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     for (auto& pair : table) {
         pair.first.mark(*this); // Mark key
-        pair.second.mark(*this); // Mark value
-    }
-}
-
-void GarbageCollector::markEnvironmentStore(std::map<std::string, PomeValue>& store) {
-    for (auto& pair : store) {
         pair.second.mark(*this); // Mark value
     }
 }

@@ -1,5 +1,4 @@
 #include "../include/pome_value.h"
-#include "../include/pome_environment.h"
 #include "../include/pome_gc.h"
 #include "../include/pome_chunk.h" // Added
 #include <iostream>
@@ -96,12 +95,6 @@ namespace Pome
         return obj && obj->type() == ObjectType::MODULE;
     }
 
-    bool PomeValue::isEnvironment() const
-    {
-        PomeObject* obj = asObject();
-        return obj && obj->type() == ObjectType::ENVIRONMENT;
-    }
-
     /**
      * Getters
      */
@@ -146,11 +139,6 @@ namespace Pome
     PomeModule* PomeValue::asModule() const
     {
         return static_cast<PomeModule*>(asObject());
-    }
-
-    Environment* PomeValue::asEnvironment() const
-    {
-        return static_cast<Environment*>(asObject());
     }
 
     std::string PomeValue::toString() const
@@ -333,9 +321,6 @@ namespace Pome
      * User-defined Function Object
      */
     void PomeFunction::markChildren(GarbageCollector& gc) {
-        if (closureEnv) {
-            gc.markObject(closureEnv);
-        }
         for (auto& val : upvalues) {
             val.mark(gc);
         }

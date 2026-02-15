@@ -14,6 +14,7 @@
 #include "pome_vm.h"
 #include "pome_chunk.h"
 #include "pome_stdlib.h" // Added for stdlib
+#include "../include/pome_module_resolver.h" // Added for ModuleResolver
 
 // --- CONFIGURATION ---
 const std::string POME_VERSION = "0.2.0-beta";
@@ -121,81 +122,64 @@ bool executeSource(const std::string& source) {
         
         if (program) {
             Pome::GarbageCollector gc;
+            Pome::ModuleResolver resolver;
             
             Pome::ModuleLoader loader = [&](const std::string& moduleName) -> Pome::PomeValue {
+                // Built-in modules
                 if (moduleName == "math") return Pome::PomeValue(Pome::StdLib::createMathModule(gc));
                 if (moduleName == "io") return Pome::PomeValue(Pome::StdLib::createIOModule(gc));
                 if (moduleName == "string") return Pome::PomeValue(Pome::StdLib::createStringModule(gc));
                 if (moduleName == "time") return Pome::PomeValue(Pome::StdLib::createTimeModule(gc));
 
-                std::string path;
-                std::string filename = moduleName;
-                std::replace(filename.begin(), filename.end(), '.', '/');
+                Pome::ResolutionResult result = resolver.resolve(moduleName);
 
-                std::vector<std::string> searchPaths = {
-                    filename + ".pome",
-                    "modules/" + filename + ".pome",
-                    "examples/modules/" + filename + ".pome",
-                    "../examples/modules/" + filename + ".pome",
-                    "test/root_tests/" + filename + ".pome",
-                    "../test/root_tests/" + filename + ".pome"
-                };
+                if (result.type == Pome::ModuleType::NOT_FOUND) {
+                    return Pome::PomeValue(); // Return nil if not found
+                }
 
-                std::vector<std::string> nativeSearchPaths = {
-                    filename + ".so",
-                    "lib/" + filename + ".so",
-                    "modules/lib/" + filename + ".so",
-                    "examples/extensions/" + filename + "/lib" + filename + ".so",
-                    "examples/extensions/" + filename + "/" + filename + ".so"
-                };
-                
-                std::ifstream mFile;
-                for (const auto& p : searchPaths) {
-                    mFile.open(p);
-                    if (mFile.is_open()) {
-                        path = p;
-                        break;
+                if (result.type == Pome::ModuleType::POME_SCRIPT_FILE || result.type == Pome::ModuleType::POME_PACKAGE_DIR) {
+                     std::string filePath = result.path;
+                     if (result.type == Pome::ModuleType::POME_PACKAGE_DIR) {
+                         filePath += "/__init__.pome";
+                     }
+
+                    std::ifstream mFile(filePath);
+                    if (!mFile.is_open()) return Pome::PomeValue();
+                    
+                    std::stringstream mBuffer;
+                    mBuffer << mFile.rdbuf();
+                    mFile.close();
+                    
+                    // 2. Parse
+                    Pome::Lexer mLexer(mBuffer.str());
+                    Pome::Parser mParser(mLexer);
+                    auto mProgram = mParser.parseProgram();
+                    if (!mProgram) return Pome::PomeValue();
+                    
+                    // 3. Compile
+                    Pome::Compiler mCompiler(gc);
+                    auto mChunk = mCompiler.compile(*mProgram);
+                    
+                    // 4. Execute in a new module object
+                    Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
+                    
+                    extern Pome::VM* currentVM; 
+                    if (currentVM) {
+                        currentVM->interpret(mChunk.get(), moduleObj);
                     }
-                    mFile.clear();
+                    
+                    return Pome::PomeValue(moduleObj);
                 }
                 
-                if (!mFile.is_open()) {
-                    // Try native modules
-                    for (const auto& p : nativeSearchPaths) {
-                        std::ifstream nFile(p);
-                        if (nFile.good()) {
-                            Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
-                            if (currentVM) {
-                                return currentVM->loadNativeModule(p, moduleObj);
-                            }
-                        }
+                if (result.type == Pome::ModuleType::NATIVE_MODULE_FILE) {
+                    Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
+                    extern Pome::VM* currentVM;
+                    if (currentVM) {
+                         return currentVM->loadNativeModule(result.path, moduleObj);
                     }
-                    return Pome::PomeValue();
                 }
                 
-                std::stringstream mBuffer;
-                mBuffer << mFile.rdbuf();
-                mFile.close();
-                
-                // 2. Parse
-                Pome::Lexer mLexer(mBuffer.str());
-                Pome::Parser mParser(mLexer);
-                auto mProgram = mParser.parseProgram();
-                if (!mProgram) return Pome::PomeValue();
-                
-                // 3. Compile
-                Pome::Compiler mCompiler(gc);
-                auto mChunk = mCompiler.compile(*mProgram);
-                
-                // 4. Execute in a new module object
-                Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
-                
-                extern Pome::VM* currentVM; 
-                if (currentVM) {
-                    currentVM->interpret(mChunk.get(), moduleObj);
-                }
-                
-                return Pome::PomeValue(moduleObj);
+                return Pome::PomeValue();
             };
 
             Pome::Compiler compiler(gc);
@@ -210,6 +194,15 @@ bool executeSource(const std::string& source) {
             // Register Standard Functions
             vm.registerGlobal("PI", Pome::PomeValue(3.141592653589793));
             
+            vm.registerNative("print", [](const std::vector<Pome::PomeValue>& args) {
+                for (size_t i = 0; i < args.size(); ++i) {
+                    std::cout << args[i].toString();
+                    if (i < args.size() - 1) std::cout << " ";
+                }
+                std::cout << std::endl;
+                return Pome::PomeValue(std::monostate{});
+            });
+
             vm.registerNative("len", [](const std::vector<Pome::PomeValue>& args) {
                 if (args.empty()) return Pome::PomeValue(0.0);
                 if (args[0].isString()) return Pome::PomeValue((double)args[0].asString().length());
