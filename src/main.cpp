@@ -140,6 +140,14 @@ bool executeSource(const std::string& source) {
                     "test/root_tests/" + filename + ".pome",
                     "../test/root_tests/" + filename + ".pome"
                 };
+
+                std::vector<std::string> nativeSearchPaths = {
+                    filename + ".so",
+                    "lib/" + filename + ".so",
+                    "modules/lib/" + filename + ".so",
+                    "examples/extensions/" + filename + "/lib" + filename + ".so",
+                    "examples/extensions/" + filename + "/" + filename + ".so"
+                };
                 
                 std::ifstream mFile;
                 for (const auto& p : searchPaths) {
@@ -151,7 +159,19 @@ bool executeSource(const std::string& source) {
                     mFile.clear();
                 }
                 
-                if (!mFile.is_open()) return Pome::PomeValue();
+                if (!mFile.is_open()) {
+                    // Try native modules
+                    for (const auto& p : nativeSearchPaths) {
+                        std::ifstream nFile(p);
+                        if (nFile.good()) {
+                            Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
+                            if (currentVM) {
+                                return currentVM->loadNativeModule(p, moduleObj);
+                            }
+                        }
+                    }
+                    return Pome::PomeValue();
+                }
                 
                 std::stringstream mBuffer;
                 mBuffer << mFile.rdbuf();

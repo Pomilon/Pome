@@ -1,5 +1,5 @@
-#include <pome/pome_interpreter.h>
-#include <pome/pome_value.h>
+#include "../../../include/pome_vm.h"
+#include "../../../include/pome_value.h"
 #include <iostream>
 #include <vector>
 
@@ -26,7 +26,7 @@ PomeValue nativeAdd(const std::vector<PomeValue> &args)
 
 // Entry point
 // Must be extern "C" to prevent name mangling so dlsym can find it
-extern "C" void pome_init(Interpreter *vm, PomeModule *module)
+extern "C" void pome_init(VM *vm, PomeModule *module)
 {
     std::cout << "[Native Module] Initializing my_extension..." << std::endl;
 

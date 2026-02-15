@@ -30,6 +30,8 @@ namespace Pome {
         void registerGlobal(const std::string& name, PomeValue value);
         
         void markRoots();
+        GarbageCollector& getGC() { return gc; }
+        PomeValue loadNativeModule(const std::string& libraryPath, PomeModule* moduleObj);
 
         bool hasError = false;
 
