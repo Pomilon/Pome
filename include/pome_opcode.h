@@ -52,6 +52,7 @@ namespace Pome {
         TFORLOOP,
         IMPORT,
         EXPORT,
+        INHERIT, // Added
         GETITER,
         AND,
         OR,

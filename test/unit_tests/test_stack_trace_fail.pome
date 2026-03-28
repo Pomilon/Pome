@@ -1,0 +1,14 @@
+fun level3() {
+    var x = nil;
+    print(x.some_key); // Should error here
+}
+
+fun level2() {
+    level3();
+}
+
+fun level1() {
+    level2();
+}
+
+level1();

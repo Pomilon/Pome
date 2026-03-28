@@ -243,9 +243,10 @@ namespace Pome
     {
     public:
         std::string name;
+        class PomeClass* superclass = nullptr;
         std::map<std::string, PomeFunction*> methods;
 
-        explicit PomeClass(std::string n) : name(std::move(n)) {}
+        explicit PomeClass(std::string name) : name(std::move(name)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
         std::string toString() const override { return "<class " + name + ">"; }
         void markChildren(class GarbageCollector& gc) override;
@@ -256,6 +257,9 @@ namespace Pome
             if (it != methods.end())
             {
                 return it->second;
+            }
+            if (superclass) {
+                return superclass->findMethod(name);
             }
             return nullptr;
         }
@@ -285,6 +289,7 @@ namespace Pome
     class PomeModule : public PomeObject
     {
     public:
+        std::string scriptPath;
         std::map<PomeValue, PomeValue> exports;
         std::shared_ptr<Program> ast_root; // Keeps the AST alive for script-based modules
 

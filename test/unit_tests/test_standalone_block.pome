@@ -1,1 +1,16 @@
-{ var a = 1; print(a); }
+var x = 1;
+{
+    var x = 2;
+    print("inner:", x);
+}
+print("outer:", x);
+
+fun test() {
+    var y = 10;
+    {
+        var y = 20;
+        print("fun inner:", y);
+    }
+    print("fun outer:", y);
+}
+test();

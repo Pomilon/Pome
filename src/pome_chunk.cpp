@@ -122,6 +122,9 @@ namespace Pome {
             case OpCode::EXPORT:
                 std::cout << "EXPORT    R" << a << " K" << bx << " (" << chunk.constants[bx].toString() << ")" << std::endl;
                 break;
+            case OpCode::INHERIT:
+                std::cout << "INHERIT   R" << a << " R" << b << std::endl;
+                break;
             case OpCode::AND:
                 std::cout << "AND       R" << a << " R" << b << " R" << c << std::endl;
                 break;

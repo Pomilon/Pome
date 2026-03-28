@@ -25,6 +25,7 @@ namespace Pome
         EXPORT,
         VAR,
         CLASS,
+        EXTENDS, // Added
         THIS,
         STRICT, 
 

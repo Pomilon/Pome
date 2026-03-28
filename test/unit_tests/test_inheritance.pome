@@ -1,0 +1,37 @@
+class Animal {
+    fun init(name) {
+        this.name = name;
+    }
+
+    fun speak() {
+        print(this.name, "makes a sound.");
+    }
+}
+
+class Dog extends Animal {
+    fun speak() {
+        print(this.name, "barks: Woof!");
+    }
+}
+
+class Cat extends Animal {
+    fun speak() {
+        print(this.name, "meows: Meow!");
+    }
+}
+
+var d = Dog("Buddy");
+var c = Cat("Kitty");
+
+d.speak(); // Buddy barks: Woof!
+c.speak(); // Kitty meows: Meow!
+
+// Test inherited field access
+print("Dog name:", d.name);
+print("Cat name:", c.name);
+
+// Test method override with super-like behavior (manual for now since super is not implemented)
+// But we can check if it falls back to super if not defined in child
+class Bird extends Animal {}
+var b = Bird("Tweety");
+b.speak(); // Tweety makes a sound.

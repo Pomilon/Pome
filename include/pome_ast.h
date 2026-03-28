@@ -464,14 +464,16 @@ namespace Pome
     class ClassDeclStmt : public Statement
     {
     public:
-        ClassDeclStmt(const std::string &name, std::vector<std::unique_ptr<FunctionDeclStmt>> methods, int line, int col)
-            : Statement(CLASS_DECL_STMT, line, col), name_(name), methods_(std::move(methods)) {}
+        ClassDeclStmt(const std::string &name, const std::string &superclassName, std::vector<std::unique_ptr<FunctionDeclStmt>> methods, int line, int col)
+            : Statement(CLASS_DECL_STMT, line, col), name_(name), superclassName_(superclassName), methods_(std::move(methods)) {}
         const std::string &getName() const { return name_; }
+        const std::string &getSuperclassName() const { return superclassName_; }
         const std::vector<std::unique_ptr<FunctionDeclStmt>> &getMethods() const { return methods_; }
         void accept(ASTVisitor &visitor) override;
 
     private:
         std::string name_;
+        std::string superclassName_;
         std::vector<std::unique_ptr<FunctionDeclStmt>> methods_;
     };
 

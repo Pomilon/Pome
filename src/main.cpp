@@ -115,7 +115,7 @@ Pome::VM* currentVM = nullptr;
 
 // --- CORE EXECUTION LOGIC ---
 
-bool executeSource(const std::string& source, const std::string& scriptDir = "") {
+bool executeSource(const std::string& source, const std::string& scriptPath = "") {
     try {
         Pome::Lexer lexer(source);
         Pome::Parser parser(lexer);
@@ -125,8 +125,8 @@ bool executeSource(const std::string& source, const std::string& scriptDir = "")
             Pome::GarbageCollector gc;
             Pome::ModuleResolver resolver;
             
-            if (!scriptDir.empty()) {
-                resolver.addSearchPath(scriptDir);
+            if (!scriptPath.empty() && scriptPath != "<repl>") {
+                resolver.addSearchPath(Pome::FileUtils::getDirectory(scriptPath));
             }
             
             Pome::ModuleLoader loader = [&](const std::string& moduleName) -> Pome::PomeValue {
@@ -167,6 +167,7 @@ bool executeSource(const std::string& source, const std::string& scriptDir = "")
                     
                     // 4. Execute in a new module object
                     Pome::PomeModule* moduleObj = gc.allocate<Pome::PomeModule>();
+                    moduleObj->scriptPath = filePath;
                     
                     extern Pome::VM* currentVM; 
                     if (currentVM) {
@@ -195,6 +196,9 @@ bool executeSource(const std::string& source, const std::string& scriptDir = "")
             // Set global VM pointer for the loader
             extern Pome::VM* currentVM;
             currentVM = &vm;
+
+            Pome::PomeModule* mainModule = gc.allocate<Pome::PomeModule>();
+            mainModule->scriptPath = scriptPath.empty() ? "<script>" : scriptPath;
 
             // Register Standard Functions
             vm.registerGlobal("PI", Pome::PomeValue(3.141592653589793));
@@ -257,7 +261,7 @@ bool executeSource(const std::string& source, const std::string& scriptDir = "")
 
             // Standard Library Modules are now loaded via ModuleLoader
 
-            vm.interpret(chunk.get());
+            vm.interpret(chunk.get(), mainModule);
             if (vm.hasError) return false;
         }
         return true;
@@ -281,7 +285,7 @@ void runPrompt() {
         if (line == "exit") break;
         if (line.empty()) continue;
 
-        executeSource(line);
+        executeSource(line, "<repl>");
     }
 }
 
@@ -296,9 +300,7 @@ int runFile(const std::string& path) {
     buffer << file.rdbuf();
     std::string source = buffer.str();
     
-    std::string dir = Pome::FileUtils::getDirectory(path);
-
-    if (!executeSource(source, dir)) return 65;
+    if (!executeSource(source, path)) return 65;
     return 0;
 }
 

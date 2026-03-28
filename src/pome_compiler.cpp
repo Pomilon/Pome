@@ -515,27 +515,27 @@ namespace Pome {
 
     void Compiler::visit(ClassDeclStmt &stmt) {
         PomeClass* klass = gc.allocate<PomeClass>(stmt.getName());
-        
+
         for (const auto& method : stmt.getMethods()) {
             PomeFunction* func = gc.allocate<PomeFunction>();
             func->name = method->getName();
             func->parameters = method->getParams();
-            
+
             Chunk* prevChunk = currentChunk;
             int prevFreeReg = freeReg;
             auto prevLocals = locals;
-            
+
             currentChunk = func->chunk.get();
             freeReg = 0;
             locals.clear();
-            
+
             // Methods: R0 = Function, R1 = 'this', R2... = Params
             allocReg(); // Skip R0
             locals.push_back({"this", 0, allocReg()}); // R1
             for (const auto& param : func->parameters) {
                 locals.push_back({param, 0, allocReg()});
             }
-            
+
             for (const auto& s : method->getBody()) {
                 s->accept(*this);
                 resetFreeReg();
@@ -546,22 +546,35 @@ namespace Pome {
             } else {
                 emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), method->getLine());
             }
-            
+
             currentChunk = prevChunk;
             freeReg = prevFreeReg;
             locals = prevLocals;
-            
+
             klass->methods[func->name] = func;
         }
-        
-        int reg = allocReg();
+
+        int classReg = allocReg();
         int constIdx = addConstant(PomeValue(klass));
-        emit(Chunk::makeABx(OpCode::LOADK, reg, constIdx), stmt.getLine());
-        
+        emit(Chunk::makeABx(OpCode::LOADK, classReg, constIdx), stmt.getLine());
+
+        if (!stmt.getSuperclassName().empty()) {
+            int superReg = resolveLocal(stmt.getSuperclassName());
+            if (superReg == -1) {
+                // Try as global
+                superReg = allocReg();
+                PomeString* superNameStr = gc.allocate<PomeString>(stmt.getSuperclassName());
+                int superNameIdx = addConstant(PomeValue(superNameStr));
+                emit(Chunk::makeABx(OpCode::GETGLOBAL, superReg, superNameIdx), stmt.getLine());
+            }
+            // Emit INHERIT R(class) R(super)
+            emit(Chunk::makeABC(OpCode::INHERIT, classReg, superReg, 0), stmt.getLine());
+        }
+
         PomeString* nameStr = gc.allocate<PomeString>(stmt.getName());
         int nameIdx = addConstant(PomeValue(nameStr));
-        emit(Chunk::makeABx(OpCode::SETGLOBAL, reg, nameIdx), stmt.getLine());
-        lastResultReg = reg;
+        emit(Chunk::makeABx(OpCode::SETGLOBAL, classReg, nameIdx), stmt.getLine());
+        lastResultReg = classReg;
     }
 
     void Compiler::visit(ThisExpr &expr) {

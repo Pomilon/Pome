@@ -6,6 +6,9 @@
 
 namespace Pome {
 
+    const std::string RED = "\033[31m";
+    const std::string RESET = "\033[0m";
+
     VM::VM(GarbageCollector& gc, ModuleLoader loader) : gc(gc), moduleLoader(loader), frameCount(0), frameBase(0), ip(nullptr) {
         stack.resize(32768);
         frames.resize(1024);  
@@ -42,15 +45,38 @@ namespace Pome {
     }
 
     void VM::runtimeError(const std::string& message) {
-        std::cerr << "Runtime Error: " << message << std::endl;
+        std::cerr << RED << "Runtime Error: " << RESET << message << std::endl;
+        
         // Print stack trace
         for (int i = frameCount - 1; i >= 0; i--) {
             CallFrame* frame = &frames[i];
+            
+            // Calculate offset. 
+            // If it's the current frame, we use the local 'ip' from interpret() 
+            // BUT runtimeError is called from outside the loop too, so we must ensure 
+            // currentFrame->ip is synced before calling runtimeError.
+            
+            // Actually, in the dispatch loop, we use a local `ip`.
+            // We need to sync it to currentFrame->ip before calling runtimeError.
+            
+            size_t offset = frame->ip - frame->chunk->code.data();
+            // Since ip usually points to the NEXT instruction, we want the line of the CURRENT one.
+            // But if we just started, offset might be 0.
+            if (offset > 0) offset--; 
+            
+            int line = (offset < frame->chunk->lines.size()) ? frame->chunk->lines[offset] : -1;
+            
+            std::string loc = "script";
             if (frame->function) {
-                std::cerr << "  in function " << frame->function->name << std::endl;
-            } else {
-                std::cerr << "  in script" << std::endl;
+                loc = "function " + frame->function->name;
+                if (frame->function->module && !frame->function->module->scriptPath.empty()) {
+                    loc += " in " + frame->function->module->scriptPath;
+                }
+            } else if (currentModule && !currentModule->scriptPath.empty()) {
+                loc = currentModule->scriptPath;
             }
+
+            std::cerr << "  at line " << line << " in " << loc << std::endl;
         }
         hasError = true;
     }
@@ -144,7 +170,7 @@ namespace Pome {
             &&LABEL_NEWLIST, &&LABEL_NEWTABLE, &&LABEL_GETTABLE, &&LABEL_SETTABLE, &&LABEL_SELF,
             &&LABEL_FORLOOP, &&LABEL_FORPREP,
             &&LABEL_TFORCALL, &&LABEL_TFORLOOP,
-            &&LABEL_IMPORT, &&LABEL_EXPORT, &&LABEL_GETITER,
+            &&LABEL_IMPORT, &&LABEL_EXPORT, &&LABEL_INHERIT, &&LABEL_GETITER,
             &&LABEL_AND, &&LABEL_OR,
             &&LABEL_SLICE,
             &&LABEL_PRINT
@@ -515,6 +541,38 @@ namespace Pome {
                 gc.writeBarrier(currentModule, val);
             }
             DISPATCH();
+        }
+
+        LABEL_INHERIT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::INHERIT:
+            #endif
+            uint32_t instruction = ip[-1];
+            int a = Chunk::getA(instruction);
+            int b = Chunk::getB(instruction);
+
+            PomeValue classVal = stack[frameBase + a];
+            PomeValue superVal = stack[frameBase + b];
+
+            if (!classVal.isClass()) {
+                runtimeError("Inheritance target must be a class.");
+                return;
+            }
+
+            if (superVal.isNil()) {
+                // Do nothing, already nil superclass
+            } else if (!superVal.isClass()) {
+                runtimeError("Superclass must be a class.");
+                return;
+            } else {
+                classVal.asClass()->superclass = superVal.asClass();
+            }
+
+            #ifdef COMPUTED_GOTO
+            goto* dispatchTable[static_cast<uint8_t>(Chunk::getOpCode(*ip++))];
+            #else
+            break;
+            #endif
         }
 
         LABEL_GETITER: {

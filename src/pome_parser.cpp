@@ -1185,6 +1185,13 @@ namespace Pome
             return nullptr;
         }
         std::string className = currentToken_.value;
+        std::string superclassName = "";
+
+        if (peekToken_.type == TokenType::EXTENDS) {
+            nextToken(); // Consume className, current is EXTENDS
+            if (!expect(TokenType::IDENTIFIER)) return nullptr; // current is superclass name
+            superclassName = currentToken_.value;
+        }
 
         if (!expect(TokenType::LBRACE))
             return nullptr; // Expect '{' (peek), consumes Name, currentToken_ becomes '{'
@@ -1221,7 +1228,7 @@ namespace Pome
         }
         nextToken(); // Consume '}'
 
-        return std::make_unique<ClassDeclStmt>(className, std::move(methods), line, col);
+        return std::make_unique<ClassDeclStmt>(className, superclassName, std::move(methods), line, col);
     }
 
     std::unique_ptr<Statement> Parser::parseImportStatement()
