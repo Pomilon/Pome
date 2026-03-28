@@ -618,6 +618,19 @@ namespace Pome
             return parseFromImportStatement();
         case TokenType::EXPORT: // Handle export statements
             return parseExportStatement();
+        case TokenType::LBRACE: // Handle standalone block statements
+        {
+            int line = currentToken_.line;
+            int col = currentToken_.column;
+            nextToken(); // Consume '{'
+            auto body = parseBlockStatement();
+            if (currentToken_.type != TokenType::RBRACE) {
+                error("Expected '}' after block statement, got " + currentToken_.debugString());
+                return nullptr;
+            }
+            nextToken(); // Consume '}'
+            return std::make_unique<BlockStmt>(std::move(body), line, col);
+        }
         default:
             /**
              * Could be an expression statement or an assignment

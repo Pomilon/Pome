@@ -489,7 +489,11 @@ namespace Pome {
                 stack[frameBase + a] = moduleCache[moduleName];
             } else if (moduleLoader) {
                 PomeValue mod = moduleLoader(moduleName);
-                if (!mod.isNil()) {
+                if (mod.isNil()) {
+                    runtimeError("Cannot find module '" + moduleName + "'");
+                    return;
+                }
+                if (mod.isModule()) {
                     moduleCache[moduleName] = mod;
                 }
                 stack[frameBase + a] = mod;

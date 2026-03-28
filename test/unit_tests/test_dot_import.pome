@@ -1,0 +1,2 @@
+import nested.deep_mod;
+print(deep_mod.x);

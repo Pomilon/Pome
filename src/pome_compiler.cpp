@@ -780,7 +780,13 @@ namespace Pome {
         int reg = allocReg();
         emit(Chunk::makeABx(OpCode::IMPORT, reg, nameIdx), stmt.getLine());
         
-        locals.push_back({stmt.getModuleName(), scopeDepth, reg});
+        std::string fullPath = stmt.getModuleName();
+        std::string baseName = fullPath;
+        size_t lastDot = fullPath.find_last_of('.');
+        if (lastDot != std::string::npos) {
+            baseName = fullPath.substr(lastDot + 1);
+        }
+        locals.push_back({baseName, scopeDepth, reg});
         lastResultReg = reg;
     }
 
