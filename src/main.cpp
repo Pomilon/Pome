@@ -15,6 +15,7 @@
 #include "pome_chunk.h"
 #include "pome_stdlib.h" // Added for stdlib
 #include "../include/pome_module_resolver.h" // Added for ModuleResolver
+#include "../include/pome_file_utils.hpp" // Added for FileUtils
 
 // --- CONFIGURATION ---
 const std::string POME_VERSION = "0.2.0-beta";
@@ -114,7 +115,7 @@ Pome::VM* currentVM = nullptr;
 
 // --- CORE EXECUTION LOGIC ---
 
-bool executeSource(const std::string& source) {
+bool executeSource(const std::string& source, const std::string& scriptDir = "") {
     try {
         Pome::Lexer lexer(source);
         Pome::Parser parser(lexer);
@@ -123,6 +124,10 @@ bool executeSource(const std::string& source) {
         if (program) {
             Pome::GarbageCollector gc;
             Pome::ModuleResolver resolver;
+            
+            if (!scriptDir.empty()) {
+                resolver.addSearchPath(scriptDir);
+            }
             
             Pome::ModuleLoader loader = [&](const std::string& moduleName) -> Pome::PomeValue {
                 // Built-in modules
@@ -290,8 +295,10 @@ int runFile(const std::string& path) {
     std::stringstream buffer;
     buffer << file.rdbuf();
     std::string source = buffer.str();
+    
+    std::string dir = Pome::FileUtils::getDirectory(path);
 
-    if (!executeSource(source)) return 65;
+    if (!executeSource(source, dir)) return 65;
     return 0;
 }
 

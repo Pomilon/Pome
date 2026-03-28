@@ -40,6 +40,13 @@ public:
             return (stat(path.c_str(), &buffer) == 0);
         #endif
     }
+
+    // Get the directory part of a path
+    static std::string getDirectory(const std::string& path) {
+        size_t lastSlash = path.find_last_of("/\\");
+        if (lastSlash == std::string::npos) return ".";
+        return path.substr(0, lastSlash);
+    }
 };
 
 } // namespace Pome
