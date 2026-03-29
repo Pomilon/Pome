@@ -286,33 +286,87 @@ if (x == nil or x.someProperty) {
 }
 ```
 
-## Single-Line Blocks
+## For-In Loops (ForEach)
 
-Control flow statements support single-line bodies without braces:
+The `for ... in` loop provides a convenient way to iterate over collections like lists and tables, or any object that implements the iterator protocol.
+
+### Iterating Over Lists
+
+When used with a list, the loop iterates over each element:
 
 ```pome
-if (true) print("Single line if");
-
-var i = 0;
-while (i < 3) i = i + 1;
-
-for (var j = 0; j < 3; j = j + 1) print(j);
+var fruits = ["apple", "banana", "cherry"];
+for (var fruit in fruits) {
+    print(fruit);
+}
 ```
 
-## Breaking Out of Loops
+### Iterating Over Tables
 
-Pome does not currently support `break` or `continue` statements. To exit a loop early, use a conditional:
+When used with a table, the loop iterates over the **keys**:
 
 ```pome
-var found = false;
-for (var i = 0; i < 10; i = i + 1) {
-    if (i == 5) {
-        found = true;
+var scores = {"Alice": 95, "Bob": 88};
+for (var name in scores) {
+    print(name, ":", scores[name]);
+}
+```
+
+### Custom Iterators
+
+You can make any class iterable by implementing an `iterator()` method that returns an object with a `next()` method.
+
+```pome
+class Counter {
+    fun init(limit) {
+        this.limit = limit;
+        this.count = 0;
     }
-    if (not found) {
-        print(i);
+    
+    fun iterator() {
+        return this;
+    }
+    
+    fun next() {
+        if (this.count < this.limit) {
+            var val = this.count;
+            this.count += 1;
+            return val;
+        }
+        return nil; // Return nil to stop iteration
     }
 }
+
+var c = Counter(3);
+for (var n in c) {
+    print(n); // Output: 0, 1, 2
+}
+```
+
+## Loop Control
+
+### Break
+
+The `break` statement exits the innermost loop immediately:
+
+```pome
+for (var i = 0; i < 10; i = i + 1) {
+    if (i == 5) break;
+    print(i);
+}
+// Output: 0, 1, 2, 3, 4
+```
+
+### Continue
+
+The `continue` statement skips the rest of the current iteration and moves to the next one:
+
+```pome
+for (var i = 0; i < 5; i = i + 1) {
+    if (i == 2) continue;
+    print(i);
+}
+// Output: 0, 1, 3, 4
 ```
 
 ## Best Practices

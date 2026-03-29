@@ -2,7 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <cstring>
-#include <dlfcn.h> // Added for dynamic loading
+#include <dlfcn.h> 
 
 namespace Pome {
 
@@ -30,7 +30,6 @@ namespace Pome {
             return PomeValue();
         }
 
-        // Symbol name is pome_init
         typedef void (*InitFunc)(VM*, PomeModule*);
         InitFunc init = (InitFunc)dlsym(handle, "pome_init");
         
@@ -47,24 +46,12 @@ namespace Pome {
     void VM::runtimeError(const std::string& message) {
         std::cerr << RED << "Runtime Error: " << RESET << message << std::endl;
         
-        // Print stack trace
         for (int i = frameCount - 1; i >= 0; i--) {
             CallFrame* frame = &frames[i];
-            
-            // Calculate offset. 
-            // If it's the current frame, we use the local 'ip' from interpret() 
-            // BUT runtimeError is called from outside the loop too, so we must ensure 
-            // currentFrame->ip is synced before calling runtimeError.
-            
-            // Actually, in the dispatch loop, we use a local `ip`.
-            // We need to sync it to currentFrame->ip before calling runtimeError.
-            
             size_t offset = frame->ip - frame->chunk->code.data();
-            // Since ip usually points to the NEXT instruction, we want the line of the CURRENT one.
-            // But if we just started, offset might be 0.
             if (offset > 0) offset--; 
             
-            int line = (offset < frame->chunk->lines.size()) ? frame->chunk->lines[offset] : -1;
+            int line = (offset < (int)frame->chunk->lines.size()) ? frame->chunk->lines[offset] : -1;
             
             std::string loc = "script";
             if (frame->function) {
@@ -141,9 +128,11 @@ namespace Pome {
         uint32_t* ip;
         int frameBase;
         
-        // Reusable buffers to avoid destructors in dispatch loop
         std::vector<PomeValue> args;
-        std::string moduleName;
+        std::string moduleNameStr;
+        
+        uint32_t instruction;
+        int a, b, c, bx, sbx;
 
         #define REFRESH_FRAME() \
             currentFrame = &frames[frameCount - 1]; \
@@ -165,70 +154,215 @@ namespace Pome {
             &&LABEL_NOT, &&LABEL_LEN, &&LABEL_CONCAT, &&LABEL_JMP, &&LABEL_EQ, &&LABEL_LT, &&LABEL_LE,
             &&LABEL_TEST, &&LABEL_TESTSET,
             &&LABEL_CALL, &&LABEL_TAILCALL, &&LABEL_RETURN,
-            &&LABEL_GETGLOBAL, &&LABEL_SETGLOBAL,
-            &&LABEL_GETUPVAL, &&LABEL_SETUPVAL, &&LABEL_CLOSURE,
+            &&LABEL_GETGLOBAL, &&LABEL_SETGLOBAL, &&LABEL_GETUPVAL, &&LABEL_SETUPVAL, &&LABEL_CLOSURE,
             &&LABEL_NEWLIST, &&LABEL_NEWTABLE, &&LABEL_GETTABLE, &&LABEL_SETTABLE, &&LABEL_SELF,
             &&LABEL_FORLOOP, &&LABEL_FORPREP,
             &&LABEL_TFORCALL, &&LABEL_TFORLOOP,
-            &&LABEL_IMPORT, &&LABEL_EXPORT, &&LABEL_INHERIT, &&LABEL_GETITER,
-            &&LABEL_AND, &&LABEL_OR,
-            &&LABEL_SLICE,
-            &&LABEL_PRINT
+            &&LABEL_IMPORT, &&LABEL_EXPORT, &&LABEL_INHERIT, &&LABEL_GETSUPER, &&LABEL_GETITER,
+            &&LABEL_AND, &&LABEL_OR, &&LABEL_SLICE, &&LABEL_PRINT
         };
         
         #define DISPATCH() \
             do { \
-                uint32_t instruction = *ip++; \
+                instruction = *ip++; \
+                a = Chunk::getA(instruction); \
+                b = Chunk::getB(instruction); \
+                c = Chunk::getC(instruction); \
+                bx = Chunk::getBx(instruction); \
+                sbx = Chunk::getSBx(instruction); \
                 goto *dispatchTable[static_cast<uint8_t>(Chunk::getOpCode(instruction))]; \
             } while (false)
-            
+
         DISPATCH();
-#else
+        #else
         #define DISPATCH() break
         while (true) {
-            uint32_t instruction = *ip++;
+            instruction = *ip++;
+            a = Chunk::getA(instruction);
+            b = Chunk::getB(instruction);
+            c = Chunk::getC(instruction);
+            bx = Chunk::getBx(instruction);
+            sbx = Chunk::getSBx(instruction);
             OpCode op = Chunk::getOpCode(instruction);
             switch (op) {
-#endif
+        #endif
 
         LABEL_MOVE: {
             #ifndef COMPUTED_GOTO
             case OpCode::MOVE:
             #endif
-            uint32_t instruction = ip[-1]; 
-            stack[frameBase + Chunk::getA(instruction)] = stack[frameBase + Chunk::getB(instruction)];
+            stack[frameBase + a] = stack[frameBase + b];
             DISPATCH();
         }
-        
+
         LABEL_LOADK: {
             #ifndef COMPUTED_GOTO
             case OpCode::LOADK:
             #endif
-            uint32_t instruction = ip[-1];
-            stack[frameBase + Chunk::getA(instruction)] = constants[Chunk::getBx(instruction)];
+            stack[frameBase + a] = constants[bx];
             DISPATCH();
         }
-        
+
         LABEL_LOADBOOL: {
             #ifndef COMPUTED_GOTO
             case OpCode::LOADBOOL:
             #endif
-            uint32_t instruction = ip[-1];
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue((bool)Chunk::getB(instruction));
-            if (Chunk::getC(instruction)) ip++; 
+            stack[frameBase + a] = PomeValue(b != 0);
+            if (c != 0) ip++;
             DISPATCH();
         }
-        
+
         LABEL_LOADNIL: {
             #ifndef COMPUTED_GOTO
             case OpCode::LOADNIL:
             #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            for (int i = a; i <= a + b; ++i) {
-                stack[frameBase + i] = PomeValue();
+            for (int i = 0; i <= b; ++i) stack[frameBase + a + i] = PomeValue();
+            DISPATCH();
+        }
+
+        LABEL_GETUPVAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETUPVAL:
+            #endif
+            stack[frameBase + a] = currentFrame->function->upvalues[b];
+            DISPATCH();
+        }
+
+        LABEL_SETUPVAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETUPVAL:
+            #endif
+            currentFrame->function->upvalues[b] = stack[frameBase + a];
+            DISPATCH();
+        }
+
+        LABEL_GETGLOBAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETGLOBAL:
+            #endif
+            PomeValue key = constants[bx];
+            if (globals.count(key)) {
+                stack[frameBase + a] = globals[key];
+            } else {
+                stack[frameBase + a] = PomeValue();
             }
+            DISPATCH();
+        }
+
+        LABEL_SETGLOBAL: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETGLOBAL:
+            #endif
+            globals[constants[bx]] = stack[frameBase + a];
+            DISPATCH();
+        }
+
+        LABEL_GETTABLE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETTABLE:
+            #endif
+            {
+                PomeValue obj = stack[frameBase + b];
+                PomeValue key = stack[frameBase + c];
+                if (obj.isTable()) {
+                    auto it = obj.asTable()->elements.find(key);
+                    stack[frameBase + a] = (it != obj.asTable()->elements.end()) ? it->second : PomeValue();
+                } else if (obj.isList()) {
+                    if (key.isNumber()) {
+                        int idx = (int)key.asNumber();
+                        auto& elements = obj.asList()->elements;
+                        if (idx >= 0 && idx < (int)elements.size()) {
+                            stack[frameBase + a] = elements[idx];
+                        } else {
+                            stack[frameBase + a] = PomeValue();
+                        }
+                    } else {
+                        stack[frameBase + a] = PomeValue();
+                    }
+                } else if (obj.isInstance()) {
+                    PomeInstance* inst = obj.asInstance();
+                    if (key.isString()) {
+                        std::string k = key.asString();
+                        PomeValue field = inst->get(k);
+                        if (!field.isNil()) {
+                            stack[frameBase + a] = field;
+                        } else {
+                            PomeFunction* method = inst->klass->findMethod(k);
+                            if (method) {
+                                stack[frameBase + a] = PomeValue(method);
+                            } else {
+                                stack[frameBase + a] = PomeValue();
+                            }
+                        }
+                    } else {
+                        stack[frameBase + a] = PomeValue();
+                    }
+                } else if (obj.isModule()) {
+                    PomeModule* mod = obj.asModule();
+                    auto it = mod->exports.find(key);
+                    if (it != mod->exports.end()) {
+                        stack[frameBase + a] = it->second;
+                    } else {
+                        stack[frameBase + a] = PomeValue();
+                    }
+                } else {
+                    SAVE_FRAME();
+                    runtimeError("Attempt to index " + obj.toString());
+                    return;
+                }
+            }
+            DISPATCH();
+        }
+
+        LABEL_SETTABLE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETTABLE:
+            #endif
+            PomeValue obj = stack[frameBase + a];
+            PomeValue key = stack[frameBase + b];
+            PomeValue val = stack[frameBase + c];
+            if (obj.isTable()) {
+                obj.asTable()->elements[key] = val;
+                gc.writeBarrier(obj.asObject(), val);
+            } else if (obj.isList()) {
+                if (key.isNumber()) {
+                    int idx = (int)key.asNumber();
+                    auto& elements = obj.asList()->elements;
+                    if (idx >= 0 && idx < (int)elements.size()) {
+                        elements[idx] = val;
+                        gc.writeBarrier(obj.asObject(), val);
+                    } else if (idx == (int)elements.size()) {
+                        elements.push_back(val);
+                        gc.writeBarrier(obj.asObject(), val);
+                    }
+                }
+            } else if (obj.isInstance()) {
+                if (key.isString()) {
+                    obj.asInstance()->set(key.asString(), val);
+                    gc.writeBarrier(obj.asObject(), val);
+                }
+            } else if (obj.isModule()) {
+                obj.asModule()->exports[key] = val;
+                gc.writeBarrier(obj.asObject(), val);
+            }
+            DISPATCH();
+        }
+
+        LABEL_NEWLIST: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::NEWLIST:
+            #endif
+            PomeList* list = gc.allocate<PomeList>();
+            for (int i = 0; i < b; ++i) list->elements.push_back(stack[frameBase + a + i]);
+            stack[frameBase + a] = PomeValue(list);
+            DISPATCH();
+        }
+
+        LABEL_NEWTABLE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::NEWTABLE:
+            #endif
+            stack[frameBase + a] = PomeValue(gc.allocate<PomeTable>());
             DISPATCH();
         }
 
@@ -236,10 +370,8 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::ADD:
             #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
             if (v1.isNumber() && v2.isNumber()) {
                 stack[frameBase + a] = PomeValue(v1.asNumber() + v2.asNumber());
             } else if (v1.isInstance()) {
@@ -265,62 +397,66 @@ namespace Pome {
                 } else {
                     stack[frameBase + a] = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
                 }
-            } else {
+            } else if (v1.isString() || v2.isString()) {
                 stack[frameBase + a] = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
+            } else {
+                SAVE_FRAME();
+                runtimeError("Arithmetic on non-number.");
+                return;
             }
             DISPATCH();
         }
-        
+
         LABEL_SUB: {
             #ifndef COMPUTED_GOTO
             case OpCode::SUB:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
-            if (!v1.isNumber() || !v2.isNumber()) {
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            if (v1.isNumber() && v2.isNumber()) {
+                stack[frameBase + a] = PomeValue(v1.asNumber() - v2.asNumber());
+            } else {
+                SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                currentModule = savedModule; // Restore
                 return;
             }
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(v1.asNumber() - v2.asNumber());
             DISPATCH();
         }
-        
+
         LABEL_MUL: {
             #ifndef COMPUTED_GOTO
             case OpCode::MUL:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
-            if (!v1.isNumber() || !v2.isNumber()) {
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            if (v1.isNumber() && v2.isNumber()) {
+                stack[frameBase + a] = PomeValue(v1.asNumber() * v2.asNumber());
+            } else {
+                SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                currentModule = savedModule; // Restore
                 return;
             }
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(v1.asNumber() * v2.asNumber());
             DISPATCH();
         }
-        
+
         LABEL_DIV: {
             #ifndef COMPUTED_GOTO
             case OpCode::DIV:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
-            if (!v1.isNumber() || !v2.isNumber()) {
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            if (v1.isNumber() && v2.isNumber()) {
+                if (v2.asNumber() == 0.0) {
+                    SAVE_FRAME();
+                    runtimeError("Division by zero.");
+                    return;
+                }
+                stack[frameBase + a] = PomeValue(v1.asNumber() / v2.asNumber());
+            } else {
+                SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                currentModule = savedModule; // Restore
                 return;
             }
-            if (v2.asNumber() == 0.0) {
-                runtimeError("Division by zero.");
-                currentModule = savedModule; // Restore
-                return;
-            }
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(v1.asNumber() / v2.asNumber());
             DISPATCH();
         }
 
@@ -328,15 +464,15 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::MOD:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
-            if (!v1.isNumber() || !v2.isNumber()) {
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            if (v1.isNumber() && v2.isNumber()) {
+                stack[frameBase + a] = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
+            } else {
+                SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                currentModule = savedModule; // Restore
                 return;
             }
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
             DISPATCH();
         }
 
@@ -344,15 +480,15 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::POW:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue v2 = stack[frameBase + Chunk::getC(instruction)];
-            if (!v1.isNumber() || !v2.isNumber()) {
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            if (v1.isNumber() && v2.isNumber()) {
+                stack[frameBase + a] = PomeValue(std::pow(v1.asNumber(), v2.asNumber()));
+            } else {
+                SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                currentModule = savedModule; // Restore
                 return;
             }
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(std::pow(v1.asNumber(), v2.asNumber()));
             DISPATCH();
         }
 
@@ -360,10 +496,9 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::UNM:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
+            PomeValue v1 = stack[frameBase + b];
             if (v1.isNumber()) {
-                stack[frameBase + Chunk::getA(instruction)] = PomeValue(-v1.asNumber());
+                stack[frameBase + a] = PomeValue(-v1.asNumber());
             } else if (v1.isInstance()) {
                 PomeInstance* instance = v1.asInstance();
                 PomeFunction* method = instance->klass->findMethod("__neg__");
@@ -378,21 +513,29 @@ namespace Pome {
                     nextFrame->chunk = method->chunk.get();
                     nextFrame->ip = method->chunk->code.data();
                     nextFrame->base = callBase;
-                    nextFrame->destReg = Chunk::getA(instruction);
+                    nextFrame->destReg = a;
                     REFRESH_FRAME();
                     if (frameBase + 256 > stackTop) stackTop = frameBase + 256;
                     if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
                     DISPATCH();
                 } else {
+                    SAVE_FRAME();
                     runtimeError("Unary negation not implemented for this instance.");
-                    currentModule = savedModule; // Restore
                     return;
                 }
             } else {
-                runtimeError("Unary negation on non-number.");
-                currentModule = savedModule; // Restore
+                SAVE_FRAME();
+                runtimeError("Arithmetic on non-number.");
                 return;
             }
+            DISPATCH();
+        }
+
+        LABEL_NOT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::NOT:
+            #endif
+            stack[frameBase + a] = PomeValue(!stack[frameBase + b].asBool());
             DISPATCH();
         }
 
@@ -400,13 +543,10 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::LEN:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue val = stack[frameBase + Chunk::getB(instruction)];
-            double length = 0;
-            if (val.isString()) length = (double)val.asString().length();
-            else if (val.isList()) length = (double)val.asList()->elements.size();
-            else if (val.isTable()) length = (double)val.asTable()->elements.size();
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(length);
+            PomeValue v = stack[frameBase + b];
+            if (v.isString()) stack[frameBase + a] = PomeValue((double)v.asString().length());
+            else if (v.isList()) stack[frameBase + a] = PomeValue((double)v.asList()->elements.size());
+            else if (v.isTable()) stack[frameBase + a] = PomeValue((double)v.asTable()->elements.size());
             DISPATCH();
         }
 
@@ -414,331 +554,91 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::CONCAT:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeString* s = gc.allocate<PomeString>(stack[frameBase + Chunk::getB(instruction)].toString() + stack[frameBase + Chunk::getC(instruction)].toString());
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(s);
+            PomeString* s = gc.allocate<PomeString>(stack[frameBase + b].toString() + stack[frameBase + c].toString());
+            stack[frameBase + a] = PomeValue(s);
             DISPATCH();
         }
-        
-        LABEL_LT: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::LT:
-            #endif
-            uint32_t instruction = ip[-1];
-            bool res = stack[frameBase + Chunk::getB(instruction)].asNumber() < stack[frameBase + Chunk::getC(instruction)].asNumber();
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(res);
-            DISPATCH();
-        }
-        
-        LABEL_LE: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::LE:
-            #endif
-            uint32_t instruction = ip[-1];
-            bool res = stack[frameBase + Chunk::getB(instruction)].asNumber() <= stack[frameBase + Chunk::getC(instruction)].asNumber();
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(res);
-            DISPATCH();
-        }
-        
+
         LABEL_EQ: {
             #ifndef COMPUTED_GOTO
             case OpCode::EQ:
             #endif
-            uint32_t instruction = ip[-1];
-            bool res = (stack[frameBase + Chunk::getB(instruction)] == stack[frameBase + Chunk::getC(instruction)]);
-            stack[frameBase + Chunk::getA(instruction)] = PomeValue(res);
+            stack[frameBase + a] = PomeValue(stack[frameBase + b] == stack[frameBase + c]);
             DISPATCH();
         }
-        
-        LABEL_NOT: {
+
+        LABEL_LT: {
             #ifndef COMPUTED_GOTO
-            case OpCode::NOT:
+            case OpCode::LT:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            if (v1.isInstance()) {
-                PomeInstance* instance = v1.asInstance();
-                PomeFunction* method = instance->klass->findMethod("__not__");
-                if (method) {
-                    int callBase = stackTop;
-                    stack[callBase] = PomeValue(method);
-                    stack[callBase + 1] = v1;
-                    SAVE_FRAME();
-                    if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
-                    CallFrame* nextFrame = &frames[frameCount++];
-                    nextFrame->function = method;
-                    nextFrame->chunk = method->chunk.get();
-                    nextFrame->ip = method->chunk->code.data();
-                    nextFrame->base = callBase;
-                    nextFrame->destReg = Chunk::getA(instruction);
-                    REFRESH_FRAME();
-                    if (frameBase + 256 > stackTop) stackTop = frameBase + 256;
-                    if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
-                    DISPATCH();
-                } else {
-                     stack[frameBase + Chunk::getA(instruction)] = PomeValue(!v1.asBool());
-                }
-            } else {
-                stack[frameBase + Chunk::getA(instruction)] = PomeValue(!v1.asBool());
-            }
+            stack[frameBase + a] = PomeValue(stack[frameBase + b] < stack[frameBase + c]);
             DISPATCH();
         }
-        
+
+        LABEL_LE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::LE:
+            #endif
+            PomeValue v1 = stack[frameBase + b];
+            PomeValue v2 = stack[frameBase + c];
+            stack[frameBase + a] = PomeValue(v1 < v2 || v1 == v2);
+            DISPATCH();
+        }
+
         LABEL_JMP: {
             #ifndef COMPUTED_GOTO
             case OpCode::JMP:
             #endif
-            ip += Chunk::getSBx(ip[-1]);
+            ip += sbx;
             DISPATCH();
         }
-        
+
         LABEL_TEST: {
             #ifndef COMPUTED_GOTO
             case OpCode::TEST:
             #endif
-            uint32_t instruction = ip[-1];
-            if (stack[frameBase + Chunk::getA(instruction)].asBool() == (Chunk::getC(instruction) != 0)) {
+            if (stack[frameBase + a].asBool() == (c != 0)) {
                 ip++; 
             }
             DISPATCH();
         }
-        
-        LABEL_IMPORT: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::IMPORT:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            moduleName = constants[Chunk::getBx(instruction)].asString();
 
-            if (moduleCache.count(moduleName)) {
-                stack[frameBase + a] = moduleCache[moduleName];
-            } else if (moduleLoader) {
-                PomeValue mod = moduleLoader(moduleName);
-                if (mod.isNil()) {
-                    runtimeError("Cannot find module '" + moduleName + "'");
-                    return;
-                }
-                if (mod.isModule()) {
-                    moduleCache[moduleName] = mod;
-                }
-                stack[frameBase + a] = mod;
+        LABEL_TESTSET: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::TESTSET:
+            #endif
+            if (stack[frameBase + b].asBool() == (c != 0)) {
+                stack[frameBase + a] = stack[frameBase + b];
             } else {
-                stack[frameBase + a] = PomeValue();
+                ip++;
             }
             DISPATCH();
         }
 
-        LABEL_EXPORT: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::EXPORT:
-            #endif
-            uint32_t instruction = ip[-1];
-            if (currentModule) {
-                PomeValue key = constants[Chunk::getBx(instruction)];
-                PomeValue val = stack[frameBase + Chunk::getA(instruction)];
-                currentModule->exports[key] = val;
-                gc.writeBarrier(currentModule, val);
-            }
-            DISPATCH();
-        }
-
-        LABEL_INHERIT: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::INHERIT:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-
-            PomeValue classVal = stack[frameBase + a];
-            PomeValue superVal = stack[frameBase + b];
-
-            if (!classVal.isClass()) {
-                runtimeError("Inheritance target must be a class.");
-                return;
-            }
-
-            if (superVal.isNil()) {
-                // Do nothing, already nil superclass
-            } else if (!superVal.isClass()) {
-                runtimeError("Superclass must be a class.");
-                return;
-            } else {
-                classVal.asClass()->superclass = superVal.asClass();
-            }
-
-            #ifdef COMPUTED_GOTO
-            goto* dispatchTable[static_cast<uint8_t>(Chunk::getOpCode(*ip++))];
-            #else
-            break;
-            #endif
-        }
-
-        LABEL_GETITER: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::GETITER:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            PomeValue obj = stack[frameBase + b];
-            PomeValue existing = stack[frameBase + a];
-
-            if (existing.isInstance() && existing.asInstance()->klass->findMethod("next")) {
-                DISPATCH();
-            }
-
-            if (obj.isInstance()) {
-                PomeInstance* instance = obj.asInstance();
-                PomeFunction* iterMethod = instance->klass->findMethod("iterator");
-                if (iterMethod) {
-                    int callBase = stackTop;
-                    stack[callBase] = PomeValue(iterMethod);
-                    stack[callBase + 1] = obj;
-                    SAVE_FRAME();
-                    currentFrame->ip = ip - 1; // RE-EXECUTE GETITER
-                    if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
-                    CallFrame* nextFrame = &frames[frameCount++];
-                    nextFrame->function = iterMethod;
-                    nextFrame->chunk = iterMethod->chunk.get();
-                    nextFrame->ip = iterMethod->chunk->code.data();
-                    nextFrame->base = callBase;
-                    nextFrame->destReg = a;
-                    REFRESH_FRAME();
-                    stackTop += 256;
-                    if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
-                    DISPATCH();
-                } else {
-                    stack[frameBase + a] = obj;
-                }
-            } else {
-                stack[frameBase + a] = obj;
-            }
-            DISPATCH();
-        }
-
-        LABEL_AND: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::AND:
-            #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            stack[frameBase + Chunk::getA(instruction)] = !v1.asBool() ? v1 : stack[frameBase + Chunk::getC(instruction)];
-            DISPATCH();
-        }
-
-        LABEL_OR: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::OR:
-            #endif
-            uint32_t instruction = ip[-1];
-            PomeValue v1 = stack[frameBase + Chunk::getB(instruction)];
-            stack[frameBase + Chunk::getA(instruction)] = v1.asBool() ? v1 : stack[frameBase + Chunk::getC(instruction)];
-            DISPATCH();
-        }
-
-        LABEL_SLICE: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::SLICE:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            int c = Chunk::getC(instruction);
-            PomeValue obj = stack[frameBase + b];
-            int start = (int)stack[frameBase + c].asNumber();
-            int end = (int)stack[frameBase + c + 1].asNumber();
-            
-            if (obj.isList()) {
-                auto& elements = obj.asList()->elements;
-                int len = (int)elements.size();
-                if (start < 0) start += len;
-                if (end < 0) end += len;
-                if (start < 0) start = 0;
-                if (end > len) end = len;
-                PomeList* newList = gc.allocate<PomeList>();
-                for (int i = start; i < end; ++i) newList->elements.push_back(elements[i]);
-                stack[frameBase + a] = PomeValue(newList);
-            } else if (obj.isString()) {
-                std::string s = obj.asString();
-                int len = (int)s.length();
-                if (start < 0) start += len;
-                if (end < 0) end += len;
-                if (start < 0) start = 0;
-                if (end > len) end = len;
-                stack[frameBase + a] = (start < end) ? PomeValue(gc.allocate<PomeString>(s.substr(start, end - start))) : PomeValue(gc.allocate<PomeString>(""));
-            } else {
-                stack[frameBase + a] = PomeValue();
-            }
-            DISPATCH();
-        }
-
-        LABEL_PRINT: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::PRINT:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            for (int i = 0; i < b; ++i) {
-                std::cout << stack[frameBase + a + i].toString();
-                if (i < b - 1) std::cout << " ";
-            }
-            std::cout << std::endl;
-            DISPATCH();
-        }
-        
-        LABEL_RETURN: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::RETURN:
-            #endif
-            uint32_t instruction = ip[-1];
-            PomeValue result = (Chunk::getB(instruction) > 1) ? stack[frameBase + Chunk::getA(instruction)] : PomeValue();
-            int oldDestReg = currentFrame->destReg;
-            stackTop = frameBase; 
-            frameCount--;
-            if (frameCount == initialFrameIdx) {
-                currentModule = savedModule; // Restore
-                return;
-            }
-            REFRESH_FRAME();
-            stack[frameBase + oldDestReg] = result; 
-            DISPATCH();
-        }
-        
         LABEL_CALL: {
             #ifndef COMPUTED_GOTO
             case OpCode::CALL:
             #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction); 
             PomeValue callee = stack[frameBase + a];
             if (callee.isNativeFunction()) {
                 args.clear();
                 int startIdx = 1;
-                if (b > 1 && stack[frameBase + a + 1].isModule()) {
-                    startIdx = 2;
-                }
+                if (b > 1 && stack[frameBase + a + 1].isModule()) startIdx = 2;
                 for (int i = startIdx; i < b; ++i) args.push_back(stack[frameBase + a + i]);
-                stack[frameBase + a] = callee.asNativeFunction()->call(args);
+                
+                SAVE_FRAME();
+                PomeValue res = callee.asNativeFunction()->call(args);
+                REFRESH_FRAME();
+                
+                stack[frameBase + a] = res;
                 DISPATCH();
             } else if (callee.isPomeFunction()) {
                 PomeFunction* func = callee.asPomeFunction();
-                
-                // Logic to strip implicit 'self' if it's a Module and function doesn't expect it
                 int argCount = b - 1;
                 int paramCount = (int)func->parameters.size();
                 if (argCount > paramCount && argCount > 0) {
-                    PomeValue firstArg = stack[frameBase + a + 1];
-                    if (firstArg.isModule()) {
-                        // Shift arguments down to overwrite module self
-                        for (int i = 1; i < argCount; ++i) {
-                            stack[frameBase + a + i] = stack[frameBase + a + i + 1];
-                        }
-                        // We effectively removed one argument
-                        // b--; // Not strictly needed as frame setup relies on params
+                    if (stack[frameBase + a + 1].isModule()) {
+                        for (int i = 1; i < argCount; ++i) stack[frameBase + a + i] = stack[frameBase + a + i + 1];
                     }
                 }
 
@@ -772,194 +672,82 @@ namespace Pome {
                     REFRESH_FRAME();
                     if (frameBase + 256 > stackTop) stackTop = frameBase + 256;
                     if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
+                    DISPATCH();
                 } else {
                     stack[frameBase + a] = PomeValue(instance);
+                    DISPATCH();
                 }
-                DISPATCH();
             } else {
-                stack[frameBase + a] = PomeValue();
-                DISPATCH();
-            }
-        }
-        
-        LABEL_GETGLOBAL: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::GETGLOBAL:
-            #endif
-            PomeValue key = constants[Chunk::getBx(ip[-1])];
-            stack[frameBase + Chunk::getA(ip[-1])] = globals.count(key) ? globals[key] : PomeValue();
-            DISPATCH();
-        }
-        
-        LABEL_SETGLOBAL: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::SETGLOBAL:
-            #endif
-            globals[constants[Chunk::getBx(ip[-1])]] = stack[frameBase + Chunk::getA(ip[-1])];
-            DISPATCH();
-        }
-
-        LABEL_GETUPVAL: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::GETUPVAL:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            if (currentFrame->function && b < (int)currentFrame->function->upvalues.size()) {
-                stack[frameBase + a] = currentFrame->function->upvalues[b];
-            } else {
-                stack[frameBase + a] = PomeValue();
-            }
-            DISPATCH();
-        }
-
-        LABEL_SETUPVAL: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::SETUPVAL:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int b = Chunk::getB(instruction);
-            if (currentFrame->function && b < (int)currentFrame->function->upvalues.size()) {
-                currentFrame->function->upvalues[b] = stack[frameBase + a];
-            }
-            DISPATCH();
-        }
-
-        LABEL_CLOSURE: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::CLOSURE:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            int bx = Chunk::getBx(instruction);
-            PomeFunction* funcTemplate = constants[bx].asPomeFunction();
-            
-            // Create a new function object (the closure) from the template
-            PomeFunction* closure = gc.allocate<PomeFunction>();
-            closure->name = funcTemplate->name;
-            closure->parameters = funcTemplate->parameters;
-            closure->chunk = std::make_unique<Chunk>();
-            closure->chunk->code = funcTemplate->chunk->code;
-            closure->chunk->constants = funcTemplate->chunk->constants;
-            closure->chunk->lines = funcTemplate->chunk->lines;
-            closure->upvalueCount = funcTemplate->upvalueCount;
-            
-            // Capture upvalues
-            for (int i = 0; i < closure->upvalueCount; ++i) {
-                uint32_t uvMeta = *ip++; // Read metadata instruction
-                OpCode metaOp = Chunk::getOpCode(uvMeta);
-                int index = Chunk::getB(uvMeta);
-                
-                if (metaOp == OpCode::MOVE) {
-                    // Local from parent frame
-                    PomeValue val = stack[frameBase + index];
-                    closure->upvalues.push_back(val);
-                } else {
-                    // Upvalue from parent function
-                    if (currentFrame->function && index < (int)currentFrame->function->upvalues.size()) {
-                        closure->upvalues.push_back(currentFrame->function->upvalues[index]);
-                    } else {
-                        closure->upvalues.push_back(PomeValue());
-                    }
-                }
-            }
-            
-            stack[frameBase + a] = PomeValue(closure);
-            DISPATCH();
-        }
-
-        LABEL_NEWLIST: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::NEWLIST:
-            #endif
-            stack[frameBase + Chunk::getA(ip[-1])] = PomeValue(gc.allocate<PomeList>());
-            DISPATCH();
-        }
-
-        LABEL_NEWTABLE: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::NEWTABLE:
-            #endif
-            stack[frameBase + Chunk::getA(ip[-1])] = PomeValue(gc.allocate<PomeTable>(std::map<PomeValue, PomeValue>{}));
-            DISPATCH();
-        }
-
-        LABEL_GETTABLE: {
-            #ifndef COMPUTED_GOTO
-            case OpCode::GETTABLE:
-            #endif
-            uint32_t instruction = ip[-1];
-            int a = Chunk::getA(instruction);
-            PomeValue obj = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue key = stack[frameBase + Chunk::getC(instruction)];
-            if (obj.isTable()) {
-                auto it = obj.asTable()->elements.find(key);
-                stack[frameBase + a] = (it != obj.asTable()->elements.end()) ? it->second : PomeValue();
-            } else if (obj.isList() && key.isNumber()) {
-                int idx = (int)key.asNumber();
-                auto& elements = obj.asList()->elements;
-                stack[frameBase + a] = (idx >= 0 && idx < (int)elements.size()) ? elements[idx] : PomeValue();
-            } else if (obj.isInstance()) {
-                if (!key.isString()) {
-                    runtimeError("Instance member key must be a string.");
-                    return;
-                }
-                PomeInstance* instance = obj.asInstance();
-                PomeValue field = instance->get(key.asString());
-                if (!field.isNil()) stack[frameBase + a] = field;
-                else {
-                    PomeFunction* method = instance->klass->findMethod(key.asString());
-                    stack[frameBase + a] = method ? PomeValue(method) : PomeValue();
-                }
-            } else if (obj.isModule()) {
-                if (!key.isString()) {
-                    runtimeError("Module export key must be a string.");
-                    return;
-                }
-                auto it = obj.asModule()->exports.find(key);
-                stack[frameBase + a] = (it != obj.asModule()->exports.end()) ? it->second : PomeValue();
-            } else {
-                runtimeError("Attempt to index " + obj.toString());
+                SAVE_FRAME();
+                runtimeError("Object is not callable.");
                 return;
             }
             DISPATCH();
         }
-        
-        LABEL_SETTABLE: {
+
+        LABEL_TAILCALL: {
             #ifndef COMPUTED_GOTO
-            case OpCode::SETTABLE:
+            case OpCode::TAILCALL:
             #endif
-            uint32_t instruction = ip[-1];
-            PomeValue obj = stack[frameBase + Chunk::getA(instruction)];
-            PomeValue key = stack[frameBase + Chunk::getB(instruction)];
-            PomeValue val = stack[frameBase + Chunk::getC(instruction)];
-            if (obj.isTable()) {
-                obj.asTable()->elements[key] = val;
-                gc.writeBarrier(obj.asObject(), val); 
-            } else if (obj.isList() && key.isNumber()) {
-                int idx = (int)key.asNumber();
-                auto& elements = obj.asList()->elements;
-                if (idx >= 0 && idx < (int)elements.size()) elements[idx] = val;
-                else if (idx == (int)elements.size()) elements.push_back(val);
-                gc.writeBarrier(obj.asObject(), val);
-            } else if (obj.isInstance()) {
-                obj.asInstance()->set(key.asString(), val);
-                gc.writeBarrier(obj.asObject(), val);
+            DISPATCH();
+        }
+
+        LABEL_RETURN: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::RETURN:
+            #endif
+            PomeValue result = (b > 1) ? stack[frameBase + a] : PomeValue();
+            
+            frameCount--;
+            if (frameCount <= initialFrameIdx) {
+                currentModule = savedModule;
+                return; 
+            }
+            
+            int dest = frames[frameCount].destReg;
+            REFRESH_FRAME();
+            stack[frameBase + dest] = result;
+            DISPATCH();
+        }
+
+        LABEL_SELF: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SELF:
+            #endif
+            DISPATCH();
+        }
+
+        LABEL_FORLOOP: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::FORLOOP:
+            #endif
+            double step = stack[frameBase + a + 2].asNumber();
+            double idx = stack[frameBase + a].asNumber() + step;
+            double limit = stack[frameBase + a + 1].asNumber();
+            stack[frameBase + a] = PomeValue(idx);
+            if ((step > 0 && idx <= limit) || (step < 0 && idx >= limit)) {
+                ip += sbx;
+                stack[frameBase + a + 3] = PomeValue(idx);
             }
             DISPATCH();
         }
-        
+
+        LABEL_FORPREP: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::FORPREP:
+            #endif
+            double initVal = stack[frameBase + a].asNumber();
+            double step = stack[frameBase + a + 2].asNumber();
+            stack[frameBase + a] = PomeValue(initVal - step);
+            ip += sbx;
+            DISPATCH();
+        }
+
         LABEL_TFORCALL: {
             #ifndef COMPUTED_GOTO
             case OpCode::TFORCALL:
             #endif
-            uint32_t instruction = ip[-1];
-            int dest = Chunk::getA(instruction);
-            int base = Chunk::getB(instruction);
-            PomeValue iterObj = stack[frameBase + base + 4];
-
+            PomeValue iterObj = stack[frameBase + b + 4];
             if (iterObj.isInstance() && iterObj.asInstance()->klass->findMethod("next")) {
                 PomeInstance* instance = iterObj.asInstance();
                 PomeFunction* nextMethod = instance->klass->findMethod("next");
@@ -973,28 +761,28 @@ namespace Pome {
                 nextFrame->chunk = nextMethod->chunk.get();
                 nextFrame->ip = nextMethod->chunk->code.data();
                 nextFrame->base = callBase;
-                nextFrame->destReg = dest;
+                nextFrame->destReg = a;
                 REFRESH_FRAME();
                 stackTop += 256;
                 if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
                 DISPATCH();
             } else if (iterObj.isTable()) {
-                auto& elements = iterObj.asTable()->elements;
-                PomeValue lastKey = stack[frameBase + base + 1];
-                auto it = (lastKey.isNil()) ? elements.begin() : elements.upper_bound(lastKey);
-                if (it != elements.end()) {
-                    stack[frameBase + dest] = it->first;  
-                    stack[frameBase + dest + 1] = it->second; 
-                } else stack[frameBase + dest] = PomeValue(); 
+                auto& data = iterObj.asTable()->elements;
+                PomeValue lastKey = stack[frameBase + b + 1];
+                auto it = (lastKey.isNil()) ? data.begin() : data.upper_bound(lastKey);
+                if (it != data.end()) {
+                    stack[frameBase + a] = it->first;  
+                    stack[frameBase + a + 1] = it->second; 
+                } else stack[frameBase + a] = PomeValue(); 
             } else if (iterObj.isList()) {
                 auto& elements = iterObj.asList()->elements;
-                PomeValue lastKey = stack[frameBase + base + 1];
+                PomeValue lastKey = stack[frameBase + b + 1];
                 int nextIdx = lastKey.isNil() ? 0 : (int)lastKey.asNumber() + 1;
                 if (nextIdx >= 0 && nextIdx < (int)elements.size()) {
-                    stack[frameBase + dest] = PomeValue((double)nextIdx); 
-                    stack[frameBase + dest + 1] = elements[nextIdx];         
-                } else stack[frameBase + dest] = PomeValue();
-            } else stack[frameBase + dest] = PomeValue();
+                    stack[frameBase + a] = PomeValue((double)nextIdx); 
+                    stack[frameBase + a + 1] = elements[nextIdx];         
+                } else stack[frameBase + a] = PomeValue();
+            } else stack[frameBase + a] = PomeValue();
             DISPATCH();
         }
 
@@ -1002,29 +790,210 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::TFORLOOP:
             #endif
-            uint32_t instruction = ip[-1];
-            if (!stack[frameBase + Chunk::getA(instruction) + 2].isNil()) {
-                stack[frameBase + Chunk::getA(instruction) + 1] = stack[frameBase + Chunk::getA(instruction) + 2]; 
-                ip += Chunk::getSBx(instruction); 
+            if (!stack[frameBase + a + 2].isNil()) {
+                stack[frameBase + a + 1] = stack[frameBase + a + 2]; 
+                ip += sbx; 
             }
             DISPATCH();
         }
-        
-        LABEL_TAILCALL:
-        LABEL_SELF:
-        LABEL_FORLOOP:
-        LABEL_FORPREP:
-        LABEL_TESTSET:
-        {
+
+        LABEL_IMPORT: {
             #ifndef COMPUTED_GOTO
-            default:
+            case OpCode::IMPORT:
             #endif
-            return;
+            {
+                std::string name = constants[bx].asString();
+                if (moduleCache.count(name)) {
+                    stack[frameBase + a] = moduleCache[name];
+                } else if (moduleLoader) {
+                    SAVE_FRAME();
+                    PomeValue mod = moduleLoader(name);
+                    REFRESH_FRAME();
+                    if (mod.isNil()) {
+                        runtimeError("Cannot find module '" + name + "'");
+                        return;
+                    }
+                    if (mod.isModule()) moduleCache[name] = mod;
+                    stack[frameBase + a] = mod;
+                } else {
+                    stack[frameBase + a] = PomeValue();
+                }
+            }
+            DISPATCH();
+        }
+
+        LABEL_EXPORT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::EXPORT:
+            #endif
+            if (currentModule) {
+                currentModule->exports[constants[bx]] = stack[frameBase + a];
+                gc.writeBarrier(currentModule, stack[frameBase + a]);
+            }
+            DISPATCH();
+        }
+
+        LABEL_INHERIT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::INHERIT:
+            #endif
+            PomeValue classVal = stack[frameBase + a];
+            PomeValue superVal = stack[frameBase + b];
+            if (!classVal.isClass()) {
+                SAVE_FRAME();
+                runtimeError("Inheritance target must be a class.");
+                return;
+            }
+            if (!superVal.isNil()) {
+                if (!superVal.isClass()) {
+                    SAVE_FRAME();
+                    runtimeError("Superclass must be a class.");
+                    return;
+                }
+                classVal.asClass()->superclass = superVal.asClass();
+            }
+            DISPATCH();
+        }
+
+        LABEL_GETSUPER: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETSUPER:
+            #endif
+            PomeValue methodName = constants[c];
+            if (currentFrame->function && currentFrame->function->klass && currentFrame->function->klass->superclass) {
+                PomeClass* super = currentFrame->function->klass->superclass;
+                PomeFunction* method = super->findMethod(methodName.asString());
+                if (method) {
+                    stack[frameBase + a] = PomeValue(method);
+                } else {
+                    SAVE_FRAME();
+                    runtimeError("Superclass '" + super->name + "' has no method '" + methodName.asString() + "'");
+                    return;
+                }
+            } else {
+                SAVE_FRAME();
+                runtimeError("'super' used in a class with no superclass or outside of a method.");
+                return;
+            }
+            DISPATCH();
+        }
+
+        LABEL_GETITER: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETITER:
+            #endif
+            PomeValue obj = stack[frameBase + b];
+            PomeValue existing = stack[frameBase + a];
+            if (existing.isInstance() && existing.asInstance()->klass->findMethod("next")) {
+                DISPATCH();
+            }
+            if (obj.isInstance()) {
+                PomeInstance* instance = obj.asInstance();
+                PomeFunction* iterMethod = instance->klass->findMethod("iterator");
+                if (iterMethod) {
+                    int callBase = stackTop;
+                    stack[callBase] = PomeValue(iterMethod);
+                    stack[callBase + 1] = obj;
+                    SAVE_FRAME();
+                    currentFrame->ip = ip - 1; // RE-EXECUTE GETITER
+                    if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
+                    CallFrame* nextFrame = &frames[frameCount++];
+                    nextFrame->function = iterMethod;
+                    nextFrame->chunk = iterMethod->chunk.get();
+                    nextFrame->ip = iterMethod->chunk->code.data();
+                    nextFrame->base = callBase;
+                    nextFrame->destReg = a;
+                    REFRESH_FRAME();
+                    stackTop += 256;
+                    if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
+                    DISPATCH();
+                } else {
+                    stack[frameBase + a] = obj;
+                }
+            } else {
+                stack[frameBase + a] = obj;
+            }
+            DISPATCH();
+        }
+
+        LABEL_AND: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::AND:
+            #endif
+            PomeValue v1 = stack[frameBase + b];
+            stack[frameBase + a] = !v1.asBool() ? v1 : stack[frameBase + c];
+            DISPATCH();
+        }
+
+        LABEL_OR: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::OR:
+            #endif
+            PomeValue v1 = stack[frameBase + b];
+            stack[frameBase + a] = v1.asBool() ? v1 : stack[frameBase + c];
+            DISPATCH();
+        }
+
+        LABEL_SLICE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SLICE:
+            #endif
+            PomeValue obj = stack[frameBase + b];
+            PomeValue startVal = stack[frameBase + c];
+            PomeValue endVal = stack[frameBase + a + 1]; 
+            if (obj.isList()) {
+                PomeList* list = obj.asList();
+                int s = startVal.isNil() ? 0 : (int)startVal.asNumber();
+                int e = endVal.isNil() ? (int)list->elements.size() : (int)endVal.asNumber();
+                PomeList* res = gc.allocate<PomeList>();
+                for (int i = s; i < e && i < (int)list->elements.size(); ++i) res->elements.push_back(list->elements[i]);
+                stack[frameBase + a] = PomeValue(res);
+            }
+            DISPATCH();
+        }
+
+        LABEL_PRINT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::PRINT:
+            #endif
+            for (int i = 0; i < b; ++i) {
+                std::cout << stack[frameBase + a + i].toString() << (i == b - 1 ? "" : " ");
+            }
+            std::cout << std::endl;
+            DISPATCH();
+        }
+
+        LABEL_CLOSURE: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::CLOSURE:
+            #endif
+            PomeFunction* proto = constants[bx].asPomeFunction();
+            PomeFunction* closure = gc.allocate<PomeFunction>();
+            closure->name = proto->name;
+            closure->parameters = proto->parameters;
+            closure->chunk = std::make_unique<Chunk>(*proto->chunk);
+            closure->upvalueCount = proto->upvalueCount;
+            closure->module = currentModule;
+            closure->klass = proto->klass;
+
+            for (int i = 0; i < closure->upvalueCount; ++i) {
+                uint32_t uv = *ip++;
+                int upB = Chunk::getB(uv);
+                if (Chunk::getOpCode(uv) == OpCode::MOVE) {
+                    closure->upvalues.push_back(stack[frameBase + upB]);
+                } else {
+                    closure->upvalues.push_back(currentFrame->function->upvalues[upB]);
+                }
+            }
+            stack[frameBase + a] = PomeValue(closure);
+            DISPATCH();
         }
 
 #ifndef COMPUTED_GOTO
-            } 
-        } 
+            default:
+                return;
+            }
+        }
 #endif
     }
 

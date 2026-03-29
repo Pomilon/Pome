@@ -180,6 +180,60 @@ namespace Pome
         PomeString* sub = gc.allocate<PomeString>(s.substr(start, len));
         return PomeValue(sub); });
 
+            registerNative(gc, module, "lower", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                for (auto &c : s) c = std::tolower(c);
+                return PomeValue(gc.allocate<PomeString>(s));
+            });
+
+            registerNative(gc, module, "upper", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                for (auto &c : s) c = std::toupper(c);
+                return PomeValue(gc.allocate<PomeString>(s));
+            });
+
+            return module;
+        }
+
+        // Add pop, shift to io or a new module? 
+        // Actually, we need a 'table' or 'list' module.
+        // For now, let's put them in a global scope in main.cpp or a 'list' module.
+        // Let's add a List module.
+        
+        PomeModule *createListModule(GarbageCollector &gc)
+        {
+            PomeModule *module = gc.allocate<PomeModule>();
+
+            registerNative(gc, module, "push", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isList()) return PomeValue(std::monostate{});
+                args[idx].asList()->elements.push_back(args[idx + 1]);
+                gc.writeBarrier(args[idx].asObject(), const_cast<PomeValue&>(args[idx + 1]));
+                return PomeValue(std::monostate{});
+            });
+
+            registerNative(gc, module, "pop", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isList()) return PomeValue(std::monostate{});
+                auto& elements = args[idx].asList()->elements;
+                if (elements.empty()) return PomeValue(std::monostate{});
+                PomeValue val = elements.back();
+                elements.pop_back();
+                return val;
+            });
+
             return module;
         }
 

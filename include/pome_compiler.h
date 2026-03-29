@@ -44,6 +44,11 @@ namespace Pome {
         void visit(ExportStmt& stmt) override;
         void visit(ExportExpressionStmt& stmt) override;
         void visit(ForEachStmt& stmt) override;
+        void visit(BreakStmt& stmt) override;
+        void visit(ContinueStmt& stmt) override;
+        void visit(ThrowStmt& stmt) override;
+        void visit(TryCatchStmt& stmt) override;
+        void visit(SuperExpr& expr) override;
         void visit(BlockStmt& stmt) override; // Added
         void visit(SliceExpr& expr) override;
         void visit(TernaryExpr& expr) override;
@@ -65,8 +70,15 @@ namespace Pome {
             bool isLocal;
         };
 
+        struct Loop {
+            int start;
+            std::vector<int> breakJumps;
+            std::vector<int> continueJumps;
+        };
+
         std::vector<Local> locals;
         std::vector<Upvalue> upvalues;
+        std::vector<Loop> loops;
         int scopeDepth = 0;
         Compiler* parent = nullptr;
         

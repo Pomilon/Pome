@@ -53,6 +53,7 @@ namespace Pome {
         IMPORT,
         EXPORT,
         INHERIT, // Added
+        GETSUPER, // Added
         GETITER,
         AND,
         OR,

@@ -11,7 +11,8 @@ namespace Pome
     std::string Token::toString(TokenType type)
     {
         static const std::map<TokenType, std::string> tokenTypeNames = {
-            {TokenType::FUNCTION, "FUNCTION"}, {TokenType::IF, "IF"}, {TokenType::ELSE, "ELSE"}, {TokenType::WHILE, "WHILE"}, {TokenType::FOR, "FOR"}, {TokenType::RETURN, "RETURN"}, {TokenType::TRUE, "TRUE"}, {TokenType::FALSE, "FALSE"}, {TokenType::NIL, "NIL"}, {TokenType::IMPORT, "IMPORT"}, {TokenType::FROM, "FROM"}, {TokenType::EXPORT, "EXPORT"}, {TokenType::VAR, "VAR"}, {TokenType::CLASS, "CLASS"}, {TokenType::THIS, "THIS"}, {TokenType::STRICT, "STRICT"},
+            {TokenType::FUNCTION, "FUNCTION"}, {TokenType::IF, "IF"}, {TokenType::ELSE, "ELSE"}, {TokenType::WHILE, "WHILE"}, {TokenType::FOR, "FOR"}, {TokenType::RETURN, "RETURN"}, {TokenType::TRUE, "TRUE"}, {TokenType::FALSE, "FALSE"}, {TokenType::NIL, "NIL"}, {TokenType::IMPORT, "IMPORT"}, {TokenType::FROM, "FROM"}, {TokenType::EXPORT, "EXPORT"}, {TokenType::VAR, "VAR"}, {TokenType::CLASS, "CLASS"}, {TokenType::EXTENDS, "EXTENDS"}, {TokenType::THIS, "THIS"}, {TokenType::STRICT, "STRICT"},
+            {TokenType::BREAK, "BREAK"}, {TokenType::CONTINUE, "CONTINUE"}, {TokenType::TRY, "TRY"}, {TokenType::CATCH, "CATCH"}, {TokenType::THROW, "THROW"}, {TokenType::SUPER, "SUPER"},
 
             {TokenType::PLUS, "PLUS"},
             {TokenType::MINUS, "MINUS"},
@@ -19,6 +20,11 @@ namespace Pome
             {TokenType::DIVIDE, "DIVIDE"},
             {TokenType::MODULO, "MODULO"},
             {TokenType::ASSIGN, "ASSIGN"},
+            {TokenType::PLUS_ASSIGN, "PLUS_ASSIGN"},
+            {TokenType::MINUS_ASSIGN, "MINUS_ASSIGN"},
+            {TokenType::MULT_ASSIGN, "MULT_ASSIGN"},
+            {TokenType::DIV_ASSIGN, "DIV_ASSIGN"},
+            {TokenType::MOD_ASSIGN, "MOD_ASSIGN"},
             {TokenType::EQ, "EQ"},
             {TokenType::NE, "NE"},
             {TokenType::LT, "LT"},
@@ -29,6 +35,7 @@ namespace Pome
             {TokenType::OR, "OR"},
             {TokenType::NOT, "NOT"},
             {TokenType::QUESTION, "QUESTION"}, // Added for ternary operator
+            {TokenType::CARET, "CARET"},
 
             {TokenType::LPAREN, "LPAREN"},
             {TokenType::RPAREN, "RPAREN"},
@@ -169,6 +176,7 @@ namespace Pome
          */
         static const std::map<std::string, TokenType> keywords = {
             {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"extends", TokenType::EXTENDS}, {"this", TokenType::THIS}, 
+            {"break", TokenType::BREAK}, {"continue", TokenType::CONTINUE}, {"try", TokenType::TRY}, {"catch", TokenType::CATCH}, {"throw", TokenType::THROW}, {"super", TokenType::SUPER},
             {"strict", TokenType::STRICT},
             {"and", TokenType::AND},
             {"or", TokenType::OR},
@@ -346,19 +354,39 @@ namespace Pome
             {
             case '+':
                 advance();
-                token = makeToken(TokenType::PLUS, "+");
+                if (peek() == '=') {
+                    advance();
+                    token = makeToken(TokenType::PLUS_ASSIGN, "+=");
+                } else {
+                    token = makeToken(TokenType::PLUS, "+");
+                }
                 break;
             case '-':
                 advance();
-                token = makeToken(TokenType::MINUS, "-");
+                if (peek() == '=') {
+                    advance();
+                    token = makeToken(TokenType::MINUS_ASSIGN, "-=");
+                } else {
+                    token = makeToken(TokenType::MINUS, "-");
+                }
                 break;
             case '*':
                 advance();
-                token = makeToken(TokenType::MULTIPLY, "*");
+                if (peek() == '=') {
+                    advance();
+                    token = makeToken(TokenType::MULT_ASSIGN, "*=");
+                } else {
+                    token = makeToken(TokenType::MULTIPLY, "*");
+                }
                 break;
             case '%':
                 advance();
-                token = makeToken(TokenType::MODULO, "%");
+                if (peek() == '=') {
+                    advance();
+                    token = makeToken(TokenType::MOD_ASSIGN, "%=");
+                } else {
+                    token = makeToken(TokenType::MODULO, "%");
+                }
                 break;
             case '^':
                 advance();
@@ -475,6 +503,11 @@ namespace Pome
                      * For now, just return DIVIDE, but it implies a problem in comment skipping logic
                      */
                     token = makeToken(TokenType::DIVIDE, "/");
+                }
+                else if (peek() == '=')
+                {
+                    advance();
+                    token = makeToken(TokenType::DIV_ASSIGN, "/=");
                 }
                 else
                 {

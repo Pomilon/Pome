@@ -139,24 +139,31 @@ print("Hello" + " " + "World");  // Output: Hello World
 print("Count: " + 5);            // Output: Count: 5
 ```
 
-## Assignment Operator
+## Assignment Operators
 
 The `=` operator assigns values to variables:
 
 ```pome
 var x = 10;
 x = 20;
-x = x + 5;  // x is now 25
 ```
 
-### Compound Assignment (Limited)
+### Compound Assignment
 
-Pome doesn't have `+=`, `-=`, etc., but you can use:
+Pome supports compound assignment operators for concise updates:
+
+| Operator | Description | Equivalent |
+| :--- | :--- | :--- |
+| `+=` | Add and assign | `x = x + y` |
+| `-=` | Subtract and assign | `x = x - y` |
+| `*=` | Multiply and assign | `x = x * y` |
+| `/=` | Divide and assign | `x = x / y` |
+| `%=` | Modulo and assign | `x = x % y` |
 
 ```pome
 var x = 10;
-x = x + 5;   // instead of x += 5
-x = x - 3;   // instead of x -= 3
+x += 5;  // x is now 15
+x *= 2;  // x is now 30
 ```
 
 ## Operator Precedence
@@ -175,7 +182,7 @@ Operators are evaluated in this order (highest to lowest):
 | 8 | `and` | Left to right |
 | 9 | `or` | Left to right |
 | 10 | `?:` (ternary) | Right to left |
-| 11 | `=` | Right to left |
+| 11 | `=` `+=` `-=` `*=` `/=` `%=` | Right to left |
 
 ### Examples
 

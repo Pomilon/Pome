@@ -154,6 +154,19 @@ print(a % b);      // Modulo: 1
 print(a ^ b);      // Exponentiation: 1000
 ```
 
+### Compound Assignment
+
+Pome supports compound assignment operators for concise updates:
+
+```pome
+var x = 10;
+x += 5;   // Equivalent to x = x + 5 (15)
+x -= 3;   // Equivalent to x = x - 3 (12)
+x *= 2;   // Equivalent to x = x * 2 (24)
+x /= 4;   // Equivalent to x = x / 4 (6)
+x %= 4;   // Equivalent to x = x % 4 (2)
+```
+
 **Operator precedence** (from highest to lowest):
 
 1. Unary (`-`, `!`)
@@ -163,7 +176,8 @@ print(a ^ b);      // Exponentiation: 1000
 5. Comparison
 6. Logical AND
 7. Logical OR
-8. Assignment
+8. Ternary (`? :`)
+9. Assignment and Compound Assignment
 
 ### String Concatenation
 
@@ -266,14 +280,14 @@ In boolean contexts, values are evaluated for truthiness:
 ```pome
 if (0) { print("Zero is truthy"); }           // Does not print (0 is falsy)
 if (1) { print("One is truthy"); }            // Prints
-if ("") { print("Empty string is truthy"); }  // Does not print
+if ("") { print("Empty string is truthy"); }  // Prints
 if ("text") { print("Text is truthy"); }      // Prints
 if (nil) { print("Nil is truthy"); }          // Does not print
 if (false) { print("False is truthy"); }      // Does not print
 ```
 
 Falsy values: `0`, `nil`, `false`  
-Truthy values: Everything else (including empty strings)
+Truthy values: Everything else (including empty strings, empty lists, and empty tables)
 
 ## Constants
 

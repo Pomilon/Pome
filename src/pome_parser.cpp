@@ -185,6 +185,25 @@ namespace Pome
         {
             return std::make_unique<ThisExpr>(line, col);
         }
+        case TokenType::SUPER:
+        {
+            int line = currentToken_.line;
+            int col = currentToken_.column;
+            // currentToken_ is SUPER
+            if (peekToken_.type != TokenType::DOT) {
+                error("Expected '.' after 'super'.");
+                return nullptr;
+            }
+            nextToken(); // current is '.'
+            if (peekToken_.type != TokenType::IDENTIFIER) {
+                error("Expected identifier after 'super.'.");
+                return nullptr;
+            }
+            nextToken(); // current is member identifier
+            std::string member = currentToken_.value;
+            // DO NOT nextToken() here, as parseExpression loop uses peekToken_
+            return std::make_unique<SuperExpr>(member, line, col);
+        }
         case TokenType::NUMBER:
         {
             try
@@ -608,6 +627,14 @@ namespace Pome
             return parseForStatement();
         case TokenType::RETURN:
             return parseReturnStatement();
+        case TokenType::BREAK:
+            return parseBreakStatement();
+        case TokenType::CONTINUE:
+            return parseContinueStatement();
+        case TokenType::THROW:
+            return parseThrowStatement();
+        case TokenType::TRY:
+            return parseTryCatchStatement();
         case TokenType::FUNCTION: // Handle function declarations
             return parseFunctionDeclaration();
         case TokenType::CLASS: // Handle class declarations
@@ -678,7 +705,8 @@ namespace Pome
         int line = target->getLine();
         int col = target->getColumn();
 
-        nextToken(); // Consume target. currentToken_ is now ASSIGN.
+        nextToken(); // Consume target. currentToken_ is now some kind of ASSIGN.
+        TokenType opType = currentToken_.type;
         nextToken(); // Consume ASSIGN. currentToken_ is now start of RHS.
 
         auto value = parseExpression(LOWEST);
@@ -688,7 +716,30 @@ namespace Pome
             return nullptr;
         nextToken(); // Consume SEMICOLON
 
-        return std::make_unique<AssignStmt>(std::move(target), std::move(value), line, col);
+        if (opType == TokenType::ASSIGN) {
+            return std::make_unique<AssignStmt>(std::move(target), std::move(value), line, col);
+        }
+
+        // Desugar compound assignments: target += value  =>  target = target + value
+        std::string binaryOp;
+        switch (opType) {
+            case TokenType::PLUS_ASSIGN: binaryOp = "+"; break;
+            case TokenType::MINUS_ASSIGN: binaryOp = "-"; break;
+            case TokenType::MULT_ASSIGN: binaryOp = "*"; break;
+            case TokenType::DIV_ASSIGN: binaryOp = "/"; break;
+            case TokenType::MOD_ASSIGN: binaryOp = "%"; break;
+            default: break;
+        }
+
+        // We need a way to CLONE the target expression, or just reuse it if the AST allows it.
+        // Since we use unique_ptr, we can't easily clone without a clone() method.
+        // Let's assume we need a clone method in AST.
+        // Alternatively, we can handle it in the compiler.
+        // Actually, many compilers handle this in the parser by creating a special CompoundAssignStmt.
+        // Let's check if AssignStmt can take an operator.
+        
+        // I will add a CompoundAssignStmt to AST.
+        return std::make_unique<AssignStmt>(std::move(target), std::move(value), line, col, binaryOp);
     }
 
     std::unique_ptr<Statement> Parser::parseIfStatement()
@@ -1078,7 +1129,10 @@ namespace Pome
         if (!expr)
             return nullptr;
 
-        if (peekToken_.type == TokenType::ASSIGN)
+        if (peekToken_.type == TokenType::ASSIGN || 
+            peekToken_.type == TokenType::PLUS_ASSIGN || peekToken_.type == TokenType::MINUS_ASSIGN ||
+            peekToken_.type == TokenType::MULT_ASSIGN || peekToken_.type == TokenType::DIV_ASSIGN ||
+            peekToken_.type == TokenType::MOD_ASSIGN)
         {
             bool isValidLValue = (dynamic_cast<IdentifierExpr *>(expr.get()) != nullptr) ||
                                  (dynamic_cast<IndexExpr *>(expr.get()) != nullptr) ||
@@ -1431,6 +1485,75 @@ namespace Pome
         }
 
         return std::make_unique<ExportStmt>(std::move(stmt), line, col);
+    }
+
+    std::unique_ptr<Statement> Parser::parseBreakStatement() {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+        nextToken(); // Consume BREAK
+        if (currentToken_.type == TokenType::SEMICOLON) {
+            nextToken();
+        }
+        return std::make_unique<BreakStmt>(line, col);
+    }
+
+    std::unique_ptr<Statement> Parser::parseContinueStatement() {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+        nextToken(); // Consume CONTINUE
+        if (currentToken_.type == TokenType::SEMICOLON) {
+            nextToken();
+        }
+        return std::make_unique<ContinueStmt>(line, col);
+    }
+
+    std::unique_ptr<Statement> Parser::parseThrowStatement() {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+        nextToken(); // Consume THROW
+        auto expr = parseExpression();
+        if (!expr) return nullptr;
+        if (currentToken_.type == TokenType::SEMICOLON) {
+            nextToken();
+        }
+        return std::make_unique<ThrowStmt>(std::move(expr), line, col);
+    }
+
+    std::unique_ptr<Statement> Parser::parseTryCatchStatement() {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+        nextToken(); // Consume TRY
+        
+        if (!expect(TokenType::LBRACE)) return nullptr;
+        nextToken(); // Consume '{'
+        auto tryBlock = parseBlockStatement();
+        if (!expect(TokenType::RBRACE)) return nullptr;
+        nextToken(); // Consume '}'
+        
+        if (currentToken_.type != TokenType::CATCH) {
+            error("Expected 'catch' after 'try' block.");
+            return nullptr;
+        }
+        nextToken(); // Consume CATCH
+        
+        if (!expect(TokenType::LPAREN)) return nullptr;
+        nextToken(); // Consume '('
+        if (currentToken_.type != TokenType::IDENTIFIER) {
+            error("Expected identifier for catch variable.");
+            return nullptr;
+        }
+        std::string catchVar = currentToken_.value;
+        nextToken(); // Consume identifier
+        if (!expect(TokenType::RPAREN)) return nullptr;
+        nextToken(); // Consume ')'
+        
+        if (!expect(TokenType::LBRACE)) return nullptr;
+        nextToken(); // Consume '{'
+        auto catchBlock = parseBlockStatement();
+        if (!expect(TokenType::RBRACE)) return nullptr;
+        nextToken(); // Consume '}'
+        
+        return std::make_unique<TryCatchStmt>(std::move(tryBlock), catchVar, std::move(catchBlock), line, col);
     }
 
     std::vector<std::unique_ptr<Statement>> Parser::parseBlockStatement()

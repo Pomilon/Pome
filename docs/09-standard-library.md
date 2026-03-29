@@ -4,74 +4,81 @@ Pome includes a standard library with built-in functions and modules.
 
 ## Global Functions
 
-### print()
+### print(...)
 
 Output values to the console.
 
 ```pome
 print("Hello");
 print("Value:", 42);
-print("Multiple", "values", "here");
 ```
 
-Output:
+### len(collection)
 
-```
-Hello
-Value: 42
-Multiple values here
-```
-
-Multiple arguments are separated by spaces.
-
-### len()
-
-Get the length of a collection or string.
+Returns the number of elements in a list, table, or string.
 
 ```pome
-var myList = [1, 2, 3];
-print(len(myList));        // Output: 3
-print(len("hello"));           // Output: 5
-var myTable = {a: 1, b: 2};
-print(len(myTable));     // Output: 2
+len([1, 2, 3]); // 3
+len("hello");   // 5
 ```
 
-Works with:
+### type(value)
 
-- Lists: Number of elements
-- Strings: Number of characters
-- Tables: Number of key-value pairs
+Returns the type of a value as a string: `"number"`, `"string"`, `"boolean"`, `"nil"`, `"list"`, `"table"`, `"function"`, `"instance"`, `"class"`, `"module"`.
 
-### push()
+## Math Module
 
-Append a value to a list.
+Import with `import math;`.
 
-```pome
-var items = [1, 2];
-push(items, 3);
-print(items); // Output: [1, 2, 3]
-```
+| Function | Description |
+| :--- | :--- |
+| `math.sin(x)` | Sine of x (radians) |
+| `math.cos(x)` | Cosine of x (radians) |
+| `math.sqrt(x)` | Square root of x |
+| `math.abs(x)` | Absolute value of x |
+| `math.floor(x)` | Largest integer <= x |
+| `math.ceil(x)` | Smallest integer >= x |
+| `math.random()` | Random number between 0 and 1 |
 
-### type()
+**Constants**: `math.pi`
 
-Get the type of a value as a string.
+## IO Module
 
-```pome
-var myList = [1, 2];
-var myTable = {a: 1};
-fun dummy_func() {}
-class DummyClass {}
-var myInstance = DummyClass();
+Import with `import io;`.
 
-print(type(42));               // Output: number
-print(type("text"));           // Output: string
-print(type(true));             // Output: boolean
-print(type(nil));              // Output: nil
-print(type(myList));           // Output: list
-print(type(myTable));          // Output: table
-print(type(dummy_func));       // Output: function
-print(type(myInstance));       // Output: instance
-```
+| Function | Description |
+| :--- | :--- |
+| `io.readFile(path)` | Reads entire file as a string. Returns `nil` on failure. |
+| `io.writeFile(path, content)` | Writes string to file. Returns `true` on success. |
+| `io.input(prompt)` | Prints prompt and reads a line from stdin. |
+
+## String Module
+
+Import with `import string;`.
+
+| Function | Description |
+| :--- | :--- |
+| `string.sub(str, start, [len])` | Returns a substring. |
+| `string.lower(str)` | Returns lowercase version of string. |
+| `string.upper(str)` | Returns uppercase version of string. |
+
+## Time Module
+
+Import with `import time;`.
+
+| Function | Description |
+| :--- | :--- |
+| `time.clock()` | Returns monotonic time in seconds since an arbitrary point. |
+| `time.sleep(seconds)` | Pauses execution for the specified number of seconds. |
+
+## List Module
+
+Import with `import list;`.
+
+| Function | Description |
+| :--- | :--- |
+| `list.push(list, value)` | Appends value to the end of the list. |
+| `list.pop(list)` | Removes and returns the last element of the list. |
 
 ## Garbage Collection
 

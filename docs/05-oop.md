@@ -79,9 +79,81 @@ print(c2.getCount());  // Output: 1
 
 Each object has its own set of instance variables.
 
+## Inheritance
+
+Pome supports single inheritance using the `extends` keyword. A child class inherits all methods from its parent class.
+
+### Defining a Subclass
+
+```pome
+class Animal {
+    fun init(name) {
+        this.name = name;
+    }
+    
+    fun speak() {
+        print(this.name, "makes a sound.");
+    }
+}
+
+class Dog extends Animal {
+    fun speak() {
+        print(this.name, "barks.");
+    }
+}
+
+var dog = Dog("Buddy");
+dog.speak(); // Output: Buddy barks.
+```
+
+### The `super` Keyword
+
+Use `super` to call methods from the parent class:
+
+```pome
+class Base {
+    fun greet() {
+        print("Hello from Base");
+    }
+}
+
+class Derived extends Base {
+    fun greet() {
+        print("Derived starts greeting:");
+        super.greet();
+    }
+}
+
+var d = Derived();
+d.greet(); 
+// Output:
+// Derived starts greeting:
+// Hello from Base
+```
+
+Note: Calling `super.init()` is currently manual. It doesn't automatically chain in the constructor.
+
+```pome
+class Person {
+    fun init(name) {
+        this.name = name;
+    }
+}
+
+class Student extends Person {
+    fun init(name, school) {
+        super.init(name);
+        this.school = school;
+    }
+}
+```
+
 ## Methods
 
-Methods are functions defined inside a class:
+Methods are functions defined inside a class. 
+
+- **Constructors**: The `init` method is a special constructor that is called when a new instance is created. It **automatically returns `this`**, even if no return statement is present.
+- **Instance Access**: All methods receive `this` as an implicit first argument (handled automatically by the VM).
 
 ```pome
 class Rectangle {

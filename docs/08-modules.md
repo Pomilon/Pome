@@ -28,7 +28,7 @@ project/
 
 Use the `export` keyword to make code available to other modules:
 
-### Exporting Functions
+### Exporting Single Declarations
 
 ```pome
 // math_utils.pome
@@ -36,259 +36,64 @@ export fun add(a, b) {
     return a + b;
 }
 
-export fun multiply(a, b) {
-    return a * b;
-}
+export var pi = 3.14159;
 ```
 
-### Exporting Classes
+### Exporting Multiple Symbols (Export Blocks)
+
+You can export multiple items at once using an export block:
 
 ```pome
-// models.pome
-export class User {
-    fun init(name, email) {
-        this.name = name;
-        this.email = email;
-    }
-    
-    fun display() {
-        print(this.name, "-", this.email);
-    }
-}
-```
+var a = 1, b = 2;
+fun sum(x, y) { return x + y; }
 
-### Exporting Variables
-
-```pome
-// config.pome
-export var DEFAULT_TIMEOUT = 5000;
-export var MAX_RETRIES = 3;
+export { a, b, sum };
 ```
 
 ## Importing Modules
 
-Use the `import` keyword to load modules:
+### Standard Import
 
-```pome
-import math_utils;
-```
-
-This imports the module and makes its exported content available.
-
-### Using Imported Content
-
-Access exported items using dot notation:
+The `import` statement loads an entire module:
 
 ```pome
 import math_utils;
 
-var result = math_utils.add(5, 3);
-print(result);  // Output: 8
+print(math_utils.add(5, 3));
 ```
 
-### Importing Classes
+### Selected Import (From-Import)
+
+Use `from ... import` to pull specific symbols into your local scope:
 
 ```pome
-import models;
+from math_utils import add, pi;
 
-var user = models.User("Alice", "alice@example.com");
-user.display();
+print(add(5, 3));
+print(pi);
 ```
 
-## Module Paths
+## Module Search Paths
 
-### Module Paths
+When you import a module, Pome looks for it in the following order:
 
-Specify the path to the module file. When importing a module with path separators (e.g., `/`), the full path becomes part of the module's identifier in the global environment. It does **not** create nested objects for access (e.g., `my_dir.my_module`). You must use the full path as the identifier.
+1. **Script Directory**: The directory containing the script being executed.
+2. **Current Directory**: The current working directory.
+3. **Environment Variables**: Directories listed in `POME_PATH`.
+4. **Built-in Modules**: Modules like `math`, `io`, `string`, `time`.
+
+### Path-Based Imports
+
+You can import modules in subdirectories using path separators:
 
 ```pome
-// Assuming a file at 'utils/math_utils.pome'
-import utils/math_utils; // This imports the module under the identifier 'utils/math_utils'
+import utils/string_helper;
 
-// Access exported content using the full identifier
-var result = utils/math_utils.add(5, 3); // This will cause a parsing error
-// A workaround would be to assign the imported module to a simpler identifier:
-// var math_util = utils/math_utils;
-// var result = math_util.add(5, 3);
+// Access symbols via the base name:
+string_helper.trim(" text ");
 ```
 
-Patterns:
-
-- `../` - Parent directory
-- `./` - Current directory
-- `folder/file` - Subdirectory
-
-### Module Names
-
-The module name is the filename without `.pome`, potentially including its path:
-
-```
-String "models.pome" → import models; // Access via `models`
-String "math_utils.pome" → import math_utils; // Access via `math_utils`
-String "folder/handler.pome" → import folder/handler; // Access via `folder/handler`
-```
-
-## Namespace Organization
-
-Each module creates its own namespace:
-
-```pome
-// string_utils.pome
-export fun trim(str) {
-    // Remove whitespace
-    return str;
-}
-
-export fun toUpper(str) {
-    return str;
-}
-```
-
-```pome
-// main.pome
-import string_utils;
-
-var text = "  hello  ";
-print(string_utils.trim(text));    // Uses trim from string_utils
-print(string_utils.toUpper(text));  // Uses toUpper from string_utils
-```
-
-## Module Patterns
-
-### Utility Modules
-
-Group related functions:
-
-```pome
-// utils/array_utils.pome
-export fun sum(arr) {
-    var total = 0;
-    for (var i = 0; i < len(arr); i = i + 1) {
-        total = total + arr[i];
-    }
-    return total;
-}
-
-export fun average(arr) {
-    if (len(arr) == 0) return 0;
-    return sum(arr) / len(arr);
-}
-
-export fun max(arr) {
-    if (len(arr) == 0) return nil;
-    
-    var maximum = arr[0];
-    for (var i = 1; i < len(arr); i = i + 1) {
-        if (arr[i] > maximum) {
-            maximum = arr[i];
-        }
-    }
-    return maximum;
-}
-```
-
-```pome
-// main.pome
-import utils/array_utils;
-
-var array_utils_alias = utils/array_utils; // Alias for easier access
-var numbers = [1, 2, 3, 4, 5];
-print(array_utils_alias.sum(numbers));      // Output: 15
-print(array_utils_alias.average(numbers));  // Output: 3
-print(array_utils_alias.max(numbers));      // Output: 5
-```
-
-### Model/Class Modules
-
-You can define classes in separate modules. When importing a module with a path, the entire path string forms the module's identifier. Accessing it as a nested object (e.g., `models.Book`) will result in a runtime error.
-
-```pome
-// models/book.pome
-export class Book {
-    fun init(title, author, year) {
-        this.title = title;
-        this.author = author;
-        this.year = year;
-    }
-    
-    fun describe() {
-        return this.title + " by " + this.author + " (" + this.year + ")";
-    }
-}
-```
-
-```pome
-// main.pome
-// import models/book; // Importing this creates a global identifier 'models/book'
-// var book = models/book.Book("1984", "George Orwell", 1949); // This will cause a runtime error (models is undefined)
-
-print("Classes can be exported and imported, but direct nested access via path is not supported.");
-print("Instead, you would need to alias the imported module: `var BookModule = models/book; var book = BookModule.Book(...);`");
-```
-
-### Configuration Modules
-
-Store settings and constants:
-
-```pome
-// config.pome
-export var DATABASE_URL = "localhost:5432";
-export var API_KEY = "secret-key-123";
-export var LOG_LEVEL = "INFO";
-
-export var RETRY_CONFIG = {
-    max_attempts: 3,
-    timeout_ms: 5000,
-    backoff_ms: 1000
-};
-```
-
-```pome
-// main.pome
-import config;
-
-print("Database:", config.DATABASE_URL);
-print("Max attempts:", config.RETRY_CONFIG.max_attempts);
-```
-
-### Data Access Modules
-
-Encapsulate data operations:
-
-```pome
-// data/user_store.pome
-var users = [
-    {id: 1, name: "Alice", email: "alice@example.com"},
-    {id: 2, name: "Bob", email: "bob@example.com"}
-];
-
-export fun getUser(id) {
-    for (var i = 0; i < len(users); i = i + 1) {
-        if (users[i].id == id) {
-            return users[i];
-        }
-    }
-    return nil;
-}
-
-export fun addUser(user) {
-    users = users + [{id: user.id, name: user.name, email: user.email}];
-}
-
-export fun getAllUsers() {
-    return users;
-}
-```
-
-```pome
-// main.pome
-import data/user_store;
-
-// ...
-// To avoid complex literal parsing issues:
-var newUser = {id: 3, name: "Charlie", email: "charlie@example.com"};
-// ...
-```
+Pome automatically uses the last part of the path as the module's name in your local scope.
 
 ## Built-in Modules
 

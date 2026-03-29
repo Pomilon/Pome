@@ -135,6 +135,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (moduleName == "io") return Pome::PomeValue(Pome::StdLib::createIOModule(gc));
                 if (moduleName == "string") return Pome::PomeValue(Pome::StdLib::createStringModule(gc));
                 if (moduleName == "time") return Pome::PomeValue(Pome::StdLib::createTimeModule(gc));
+                if (moduleName == "list") return Pome::PomeValue(Pome::StdLib::createListModule(gc));
 
                 Pome::ResolutionResult result = resolver.resolve(moduleName);
 

@@ -170,6 +170,8 @@ namespace Pome {
     void Compiler::visit(WhileStmt &stmt) {
         int loopStart = currentChunk->code.size();
         
+        loops.push_back({loopStart, {}, {}});
+
         stmt.getCondition()->accept(*this);
         int condReg = lastResultReg;
         
@@ -182,10 +184,25 @@ namespace Pome {
             resetFreeReg();
         }
         
+        // Handle continue jumps: they point back to loopStart (condition check)
+        for (int jump : loops.back().continueJumps) {
+            int offset = loopStart - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, offset);
+        }
+
         int offset = loopStart - (int)currentChunk->code.size() - 1;
         emit(Chunk::makeAsBx(OpCode::JMP, 0, offset), stmt.getLine());
         
         patchJump(jumpToEnd);
+
+        // Handle break jumps: they point to the instruction after the final jump
+        int breakTarget = currentChunk->code.size();
+        for (int jump : loops.back().breakJumps) {
+            int breakOffset = breakTarget - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, breakOffset);
+        }
+
+        loops.pop_back();
     }
 
     void Compiler::visit(NumberExpr &expr) {
@@ -376,52 +393,121 @@ namespace Pome {
     }
     
     void Compiler::visit(AssignStmt &stmt) {
-        stmt.getValue()->accept(*this);
-        int valReg = lastResultReg;
-        
-        // Save valReg if we are going to compile something else
-        int savedValReg = allocReg();
-        emit(Chunk::makeABC(OpCode::MOVE, savedValReg, valReg, 0), stmt.getLine());
+        std::string op = stmt.getOp();
 
+        // 1. Evaluate RHS
+        stmt.getValue()->accept(*this);
+        int rhsReg = lastResultReg;
+
+        // 2. Resolve target and potentially fetch current value for compound ops
         if (auto ident = dynamic_cast<IdentifierExpr*>(stmt.getTarget())) {
             int localReg = resolveLocal(ident->getName());
+            int upvalIdx = -1;
+
             if (localReg != -1) {
-                emit(Chunk::makeABC(OpCode::MOVE, localReg, savedValReg, 0), stmt.getLine());
-                lastResultReg = localReg; 
-            } else if ((localReg = resolveUpvalue(ident->getName())) != -1) {
-                emit(Chunk::makeABC(OpCode::SETUPVAL, savedValReg, localReg, 0), stmt.getLine());
-                lastResultReg = savedValReg;
+                if (!op.empty()) {
+                    // Compound op: localReg = localReg OP rhsReg
+                    OpCode opcode = OpCode::ADD;
+                    if (op == "+") opcode = OpCode::ADD;
+                    else if (op == "-") opcode = OpCode::SUB;
+                    else if (op == "*") opcode = OpCode::MUL;
+                    else if (op == "/") opcode = OpCode::DIV;
+                    else if (op == "%") opcode = OpCode::MOD;
+                    emit(Chunk::makeABC(opcode, localReg, localReg, rhsReg), stmt.getLine());
+                } else {
+                    emit(Chunk::makeABC(OpCode::MOVE, localReg, rhsReg, 0), stmt.getLine());
+                }
+                lastResultReg = localReg;
+            } else if ((upvalIdx = resolveUpvalue(ident->getName())) != -1) {
+                if (!op.empty()) {
+                    int currentValReg = allocReg();
+                    emit(Chunk::makeABC(OpCode::GETUPVAL, currentValReg, upvalIdx, 0), stmt.getLine());
+                    OpCode opcode = OpCode::ADD;
+                    if (op == "+") opcode = OpCode::ADD;
+                    else if (op == "-") opcode = OpCode::SUB;
+                    else if (op == "*") opcode = OpCode::MUL;
+                    else if (op == "/") opcode = OpCode::DIV;
+                    else if (op == "%") opcode = OpCode::MOD;
+                    emit(Chunk::makeABC(opcode, currentValReg, currentValReg, rhsReg), stmt.getLine());
+                    emit(Chunk::makeABC(OpCode::SETUPVAL, currentValReg, upvalIdx, 0), stmt.getLine());
+                    lastResultReg = currentValReg;
+                } else {
+                    emit(Chunk::makeABC(OpCode::SETUPVAL, rhsReg, upvalIdx, 0), stmt.getLine());
+                    lastResultReg = rhsReg;
+                }
             } else {
                 if (strictMode) {
                     std::cerr << "Compiler Error: Undefined variable '" << ident->getName() << "' in strict mode." << std::endl;
                     exit(1);
                 }
+                // Global
                 PomeString* nameStr = gc.allocate<PomeString>(ident->getName());
                 int nameIdx = addConstant(PomeValue(nameStr));
-                emit(Chunk::makeABx(OpCode::SETGLOBAL, savedValReg, nameIdx), stmt.getLine());
+                if (!op.empty()) {
+                    int currentValReg = allocReg();
+                    emit(Chunk::makeABx(OpCode::GETGLOBAL, currentValReg, nameIdx), stmt.getLine());
+                    OpCode opcode = OpCode::ADD;
+                    if (op == "+") opcode = OpCode::ADD;
+                    else if (op == "-") opcode = OpCode::SUB;
+                    else if (op == "*") opcode = OpCode::MUL;
+                    else if (op == "/") opcode = OpCode::DIV;
+                    else if (op == "%") opcode = OpCode::MOD;
+                    emit(Chunk::makeABC(opcode, currentValReg, currentValReg, rhsReg), stmt.getLine());
+                    emit(Chunk::makeABx(OpCode::SETGLOBAL, currentValReg, nameIdx), stmt.getLine());
+                    lastResultReg = currentValReg;
+                } else {
+                    emit(Chunk::makeABx(OpCode::SETGLOBAL, rhsReg, nameIdx), stmt.getLine());
+                    lastResultReg = rhsReg;
+                }
             }
         } else if (auto member = dynamic_cast<MemberAccessExpr*>(stmt.getTarget())) {
             member->getObject()->accept(*this);
             int objReg = lastResultReg;
-            
+
             PomeString* keyStr = gc.allocate<PomeString>(member->getMember());
             int keyIdx = addConstant(PomeValue(keyStr));
             int keyReg = allocReg();
             emit(Chunk::makeABx(OpCode::LOADK, keyReg, keyIdx), stmt.getLine());
-            
-            emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, savedValReg), stmt.getLine());
+
+            if (!op.empty()) {
+                int currentValReg = allocReg();
+                emit(Chunk::makeABC(OpCode::GETTABLE, currentValReg, objReg, keyReg), stmt.getLine());
+                OpCode opcode = OpCode::ADD;
+                if (op == "+") opcode = OpCode::ADD;
+                else if (op == "-") opcode = OpCode::SUB;
+                else if (op == "*") opcode = OpCode::MUL;
+                else if (op == "/") opcode = OpCode::DIV;
+                else if (op == "%") opcode = OpCode::MOD;
+                emit(Chunk::makeABC(opcode, currentValReg, currentValReg, rhsReg), stmt.getLine());
+                emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, currentValReg), stmt.getLine());
+                lastResultReg = currentValReg;
+            } else {
+                emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, rhsReg), stmt.getLine());
+                lastResultReg = rhsReg;
+            }
         } else if (auto index = dynamic_cast<IndexExpr*>(stmt.getTarget())) {
             index->getObject()->accept(*this);
             int objReg = lastResultReg;
-            
             index->getIndex()->accept(*this);
             int keyReg = lastResultReg;
-            
-            emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, savedValReg), stmt.getLine());
-        } else {
-             std::cerr << "Compiler Error: Unsupported assignment target." << std::endl;
+
+            if (!op.empty()) {
+                int currentValReg = allocReg();
+                emit(Chunk::makeABC(OpCode::GETTABLE, currentValReg, objReg, keyReg), stmt.getLine());
+                OpCode opcode = OpCode::ADD;
+                if (op == "+") opcode = OpCode::ADD;
+                else if (op == "-") opcode = OpCode::SUB;
+                else if (op == "*") opcode = OpCode::MUL;
+                else if (op == "/") opcode = OpCode::DIV;
+                else if (op == "%") opcode = OpCode::MOD;
+                emit(Chunk::makeABC(opcode, currentValReg, currentValReg, rhsReg), stmt.getLine());
+                emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, currentValReg), stmt.getLine());
+                lastResultReg = currentValReg;
+            } else {
+                emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, rhsReg), stmt.getLine());
+                lastResultReg = rhsReg;
+            }
         }
-        freeRegs(1); // Free savedValReg
     }
 
     void Compiler::visit(ExpressionStmt &stmt) {
@@ -448,10 +534,10 @@ namespace Pome {
         // Native PRINT hack for speed
         if (auto ident = dynamic_cast<IdentifierExpr*>(expr.getCallee())) {
             if (ident->getName() == "print") {
-                int baseReg = allocReg();
                 int argCount = expr.getArgs().size();
-                // Ensure we have enough registers for all args
-                for (int i = 1; i < argCount; ++i) allocReg();
+                int baseReg = freeReg; 
+                // Reserve all registers
+                for (int i = 0; i < argCount; ++i) allocReg();
 
                 for (int i = 0; i < argCount; ++i) {
                     expr.getArgs()[i]->accept(*this);
@@ -459,35 +545,31 @@ namespace Pome {
                 }
                 emit(Chunk::makeABC(OpCode::PRINT, baseReg, argCount, 0), expr.getLine());
                 
-                // Free all registers used for print args
-                freeRegs(argCount);
-
-                int reg = allocReg();
-                emit(Chunk::makeABC(OpCode::LOADNIL, reg, 0, 0), expr.getLine());
-                lastResultReg = reg;
+                lastResultReg = -1;
                 return;
             }
         }
 
-        if (auto member = dynamic_cast<MemberAccessExpr*>(expr.getCallee())) {
-            // Method Call: obj.method(args)
-            member->getObject()->accept(*this);
-            int objReg = lastResultReg;
+        if (auto super = dynamic_cast<SuperExpr*>(expr.getCallee())) {
+            int thisReg = resolveLocal("this");
+            if (thisReg == -1) {
+                std::cerr << "Compiler Error: 'super' used outside of class method." << std::endl;
+                exit(1);
+            }
             
-            int calleeReg = allocReg();
-            
-            PomeString* keyStr = gc.allocate<PomeString>(member->getMember());
-            int keyIdx = addConstant(PomeValue(keyStr));
-            int keyReg = allocReg();
-            emit(Chunk::makeABx(OpCode::LOADK, keyReg, keyIdx), expr.getLine());
-            
-            emit(Chunk::makeABC(OpCode::GETTABLE, calleeReg, objReg, keyReg), expr.getLine());
-            
-            // Push 'this' (objReg) as first argument (R1)
-            emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 1, objReg, 0), expr.getLine());
-            
-            // Push other args
+            int calleeReg = allocReg(); // R(A)
             int argCount = expr.getArgs().size();
+            // Reserve: R(A+1) for 'this', R(A+2...) for args
+            for (int i = 0; i < argCount + 1; ++i) allocReg();
+
+            PomeString* memberStr = gc.allocate<PomeString>(super->getMember());
+            int memberIdx = addConstant(PomeValue(memberStr));
+            emit(Chunk::makeABC(OpCode::GETSUPER, calleeReg, thisReg, memberIdx), expr.getLine());
+            
+            // Move 'this'
+            emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 1, thisReg, 0), expr.getLine());
+            
+            // Evaluate other args
             for (int i = 0; i < argCount; ++i) {
                 expr.getArgs()[i]->accept(*this);
                 emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 2 + i, lastResultReg, 0), expr.getLine());
@@ -498,14 +580,41 @@ namespace Pome {
             return;
         }
 
-        // General Call
+        if (auto member = dynamic_cast<MemberAccessExpr*>(expr.getCallee())) {
+            member->getObject()->accept(*this);
+            int objReg = lastResultReg;
+            
+            int calleeReg = allocReg();
+            int argCount = expr.getArgs().size();
+            // Reserve: R(A+1) for 'this', R(A+2...) for args
+            for (int i = 0; i < argCount + 1; ++i) allocReg();
+            
+            PomeString* keyStr = gc.allocate<PomeString>(member->getMember());
+            int keyIdx = addConstant(PomeValue(keyStr));
+            int keyReg = allocReg();
+            emit(Chunk::makeABx(OpCode::LOADK, keyReg, keyIdx), expr.getLine());
+            
+            emit(Chunk::makeABC(OpCode::GETTABLE, calleeReg, objReg, keyReg), expr.getLine());
+            emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 1, objReg, 0), expr.getLine());
+            
+            for (int i = 0; i < argCount; ++i) {
+                expr.getArgs()[i]->accept(*this);
+                emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 2 + i, lastResultReg, 0), expr.getLine());
+            }
+            
+            emit(Chunk::makeABC(OpCode::CALL, calleeReg, argCount + 2, 1), expr.getLine());
+            lastResultReg = calleeReg;
+            return;
+        }
+
         expr.getCallee()->accept(*this);
         int calleeReg = lastResultReg;
         
         int argCount = expr.getArgs().size();
+        for (int i = 0; i < argCount; ++i) allocReg();
+
         for (int i = 0; i < argCount; ++i) {
             expr.getArgs()[i]->accept(*this);
-            // Move arg to calleeReg + 1 + i
             emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 1 + i, lastResultReg, 0), expr.getLine());
         }
         
@@ -551,6 +660,7 @@ namespace Pome {
             freeReg = prevFreeReg;
             locals = prevLocals;
 
+            func->klass = klass; // Set parent class
             klass->methods[func->name] = func;
         }
 
@@ -607,7 +717,8 @@ namespace Pome {
         }
         
         int loopStart = currentChunk->code.size();
-        
+        loops.push_back({loopStart, {}, {}});
+
         int jumpToEnd = -1;
         if (stmt.getCondition()) {
             stmt.getCondition()->accept(*this);
@@ -622,6 +733,13 @@ namespace Pome {
             resetFreeReg();
         }
         
+        // Target for continue: the increment part
+        int incrementStart = currentChunk->code.size();
+        for (int jump : loops.back().continueJumps) {
+            int offset = incrementStart - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, offset);
+        }
+
         if (stmt.getIncrement()) {
             stmt.getIncrement()->accept(*this);
         }
@@ -633,12 +751,20 @@ namespace Pome {
             patchJump(jumpToEnd);
         }
         
+        // Target for break
+        int breakTarget = currentChunk->code.size();
+        for (int jump : loops.back().breakJumps) {
+            int breakOffset = breakTarget - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, breakOffset);
+        }
+
         // Pop locals from this scope
         while (!locals.empty() && locals.back().depth == scopeDepth) {
             locals.pop_back();
         }
         scopeDepth--;
         resetFreeReg();
+        loops.pop_back();
     }
 
     void Compiler::visit(UnaryExpr &expr) {
@@ -886,22 +1012,19 @@ namespace Pome {
         locals.push_back({stmt.getVarName(), scopeDepth, userKeyReg});
         
         int loopStart = currentChunk->code.size();
-        
+        loops.push_back({loopStart, {}, {}});
+
         // TFORCALL baseReg + 2, baseReg -> fills nextKeyReg (base+2) and nextValueReg (base+3)
         // A = destination register for RETURN, B = base register containing iterable
         emit(Chunk::makeABC(OpCode::TFORCALL, baseReg + 2, baseReg, 0), stmt.getLine());
         
         // If nextKeyReg is nil, exit loop.
-        // We check nextKeyReg == nil
         int nilReg = allocReg();
         emit(Chunk::makeABC(OpCode::LOADNIL, nilReg, 0, 0), stmt.getLine());
         
         int isEndReg = allocReg();
         emit(Chunk::makeABC(OpCode::EQ, isEndReg, nextKeyReg, nilReg), stmt.getLine());
         
-        // If it IS nil (isEndReg is true), jump to end.
-        // TEST R(A), C: if R(A).truthy == (C != 0) ip++
-        // Skip next JMP if NOT end (isEndReg is false)
         emit(Chunk::makeABC(OpCode::TEST, isEndReg, 0, 0), stmt.getLine()); 
         int jumpToEnd = emitJump(OpCode::JMP);
         
@@ -913,17 +1036,85 @@ namespace Pome {
             resetFreeReg();
         }
         
-        // TFORLOOP: lastKey = nextKey; jump to loopStart
+        // Target for continue: jump to TFORLOOP
+        int tforloopIndex = currentChunk->code.size();
+        for (int jump : loops.back().continueJumps) {
+            int offset = tforloopIndex - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, offset);
+        }
+
+        // TFORLOOP: lastKey = nextKey; jump back to loopStart (TFORCALL)
         int offset = loopStart - (int)currentChunk->code.size() - 1;
         emit(Chunk::makeAsBx(OpCode::TFORLOOP, baseReg, offset), stmt.getLine());
         
         patchJump(jumpToEnd);
         
+        // Target for break
+        int breakTarget = currentChunk->code.size();
+        for (int jump : loops.back().breakJumps) {
+            int breakOffset = breakTarget - jump - 1;
+            currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, breakOffset);
+        }
+
         while (!locals.empty() && locals.back().depth == scopeDepth) {
             locals.pop_back();
         }
         scopeDepth--;
         resetFreeReg();
+        loops.pop_back();
+    }
+
+    void Compiler::visit(BreakStmt &stmt) {
+        if (loops.empty()) {
+            std::cerr << "Compiler Error: 'break' outside of loop at line " << stmt.getLine() << std::endl;
+            exit(1);
+        }
+        int jump = emitJump(OpCode::JMP);
+        loops.back().breakJumps.push_back(jump);
+    }
+
+    void Compiler::visit(ContinueStmt &stmt) {
+        if (loops.empty()) {
+            std::cerr << "Compiler Error: 'continue' outside of loop at line " << stmt.getLine() << std::endl;
+            exit(1);
+        }
+        int jump = emitJump(OpCode::JMP);
+        loops.back().continueJumps.push_back(jump);
+    }
+
+    void Compiler::visit(ThrowStmt &stmt) {
+        stmt.getValue()->accept(*this);
+        int valReg = lastResultReg;
+        // Need THROW opcode
+        emit(Chunk::makeABC(OpCode::PRINT, valReg, 1, 0), stmt.getLine()); // Temporary hack: print then exit
+        std::cerr << "Runtime Error: Uncaught exception (Throw not fully implemented in VM yet)" << std::endl;
+        exit(1);
+    }
+
+    void Compiler::visit(TryCatchStmt &stmt) {
+        // Need TRY/CATCH support in VM. 
+        // For now, just execute try block.
+        for (const auto& s : stmt.getTryBlock()) {
+            s->accept(*this);
+            resetFreeReg();
+        }
+    }
+
+    void Compiler::visit(SuperExpr &expr) {
+        // Find 'this'
+        int thisReg = resolveLocal("this");
+        if (thisReg == -1) {
+            std::cerr << "Compiler Error: 'super' used outside of class method at line " << expr.getLine() << std::endl;
+            exit(1);
+        }
+        
+        int dest = allocReg();
+        PomeString* memberStr = gc.allocate<PomeString>(expr.getMember());
+        int memberIdx = addConstant(PomeValue(memberStr));
+        
+        // GETSUPER R(A) R(this) C(index)
+        emit(Chunk::makeABC(OpCode::GETSUPER, dest, thisReg, memberIdx), expr.getLine());
+        lastResultReg = dest;
     }
 
     void Compiler::visit(BlockStmt &stmt) {

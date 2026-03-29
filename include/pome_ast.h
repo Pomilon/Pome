@@ -42,6 +42,7 @@ namespace Pome
             SLICE_EXPR,   // New node type for slicing
             TERNARY_EXPR, // New node type for ternary operator
             THIS_EXPR,    // New node type for 'this'
+            SUPER_EXPR,   // New node type for 'super'
             FUNCTION_EXPR, // New node type for function expressions
             /**
              * Specific statements
@@ -52,9 +53,13 @@ namespace Pome
             WHILE_STMT,
             FOR_STMT,
             FOR_EACH_STMT,
+            BREAK_STMT,
+            CONTINUE_STMT,
+            THROW_STMT,
+            TRY_CATCH_STMT,
+            BLOCK_STMT, // Added
             RETURN_STMT,
             EXPRESSION_STMT,
-            BLOCK_STMT, // Added for BlockStmt
             FUNCTION_DECL_STMT, // Node type for function declarations
             CLASS_DECL_STMT,    // New node type for class declarations
             IMPORT_STMT,
@@ -152,6 +157,16 @@ namespace Pome
 
     private:
         std::string name_;
+    };
+
+    class SuperExpr : public Expression
+    {
+    public:
+        SuperExpr(const std::string& member, int line, int col) : Expression(SUPER_EXPR, line, col), member_(member) {}
+        const std::string& getMember() const { return member_; }
+        void accept(ASTVisitor &visitor) override;
+    private:
+        std::string member_;
     };
 
     class ThisExpr : public Expression
@@ -328,15 +343,17 @@ namespace Pome
     class AssignStmt : public Statement
     {
     public:
-        AssignStmt(std::unique_ptr<Expression> target, std::unique_ptr<Expression> value, int line, int col)
-            : Statement(ASSIGN_STMT, line, col), target_(std::move(target)), value_(std::move(value)) {}
-        Expression *getTarget() const { return target_.get(); } // Can be IdentifierExpr or other l-values
+        AssignStmt(std::unique_ptr<Expression> target, std::unique_ptr<Expression> value, int line, int col, std::string op = "")
+            : Statement(ASSIGN_STMT, line, col), target_(std::move(target)), value_(std::move(value)), op_(std::move(op)) {}
+        Expression *getTarget() const { return target_.get(); }
         Expression *getValue() const { return value_.get(); }
+        const std::string& getOp() const { return op_; }
         void accept(ASTVisitor &visitor) override;
 
     private:
         std::unique_ptr<Expression> target_;
         std::unique_ptr<Expression> value_;
+        std::string op_;
     };
 
     class IfStmt : public Statement
@@ -420,6 +437,51 @@ namespace Pome
         std::vector<std::unique_ptr<Statement>> body_;
     };
 
+    class BreakStmt : public Statement
+    {
+    public:
+        explicit BreakStmt(int line, int col) : Statement(BREAK_STMT, line, col) {}
+        void accept(ASTVisitor &visitor) override;
+    };
+
+    class ContinueStmt : public Statement
+    {
+    public:
+        explicit ContinueStmt(int line, int col) : Statement(CONTINUE_STMT, line, col) {}
+        void accept(ASTVisitor &visitor) override;
+    };
+
+    class ThrowStmt : public Statement
+    {
+    public:
+        explicit ThrowStmt(std::unique_ptr<Expression> value, int line, int col)
+            : Statement(THROW_STMT, line, col), value_(std::move(value)) {}
+        Expression *getValue() const { return value_.get(); }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::unique_ptr<Expression> value_;
+    };
+
+    class TryCatchStmt : public Statement
+    {
+    public:
+        TryCatchStmt(std::vector<std::unique_ptr<Statement>> tryBlock,
+                     const std::string& catchVar,
+                     std::vector<std::unique_ptr<Statement>> catchBlock,
+                     int line, int col)
+            : Statement(TRY_CATCH_STMT, line, col), tryBlock_(std::move(tryBlock)), catchVar_(catchVar), catchBlock_(std::move(catchBlock)) {}
+        
+        const std::vector<std::unique_ptr<Statement>> &getTryBlock() const { return tryBlock_; }
+        const std::string &getCatchVar() const { return catchVar_; }
+        const std::vector<std::unique_ptr<Statement>> &getCatchBlock() const { return catchBlock_; }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::vector<std::unique_ptr<Statement>> tryBlock_;
+        std::string catchVar_;
+        std::vector<std::unique_ptr<Statement>> catchBlock_;
+    };
     class ReturnStmt : public Statement
     {
     public:
@@ -570,6 +632,7 @@ namespace Pome
         virtual void visit(SliceExpr &expr) = 0; // Added
         virtual void visit(TernaryExpr &expr) = 0;
         virtual void visit(FunctionExpr &expr) = 0;
+        virtual void visit(SuperExpr &expr) = 0;
 
         /**
          * Statements
@@ -580,6 +643,10 @@ namespace Pome
         virtual void visit(WhileStmt &stmt) = 0;
         virtual void visit(ForStmt &stmt) = 0;
         virtual void visit(ForEachStmt &stmt) = 0;
+        virtual void visit(BreakStmt &stmt) = 0;
+        virtual void visit(ContinueStmt &stmt) = 0;
+        virtual void visit(ThrowStmt &stmt) = 0;
+        virtual void visit(TryCatchStmt &stmt) = 0;
         virtual void visit(class BlockStmt &stmt) = 0; // Added
         virtual void visit(ReturnStmt &stmt) = 0;
         virtual void visit(ExpressionStmt &stmt) = 0;
@@ -602,6 +669,7 @@ namespace Pome
     inline void NilExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void IdentifierExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ThisExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
+    inline void SuperExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void BinaryExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void UnaryExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void CallExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
@@ -620,6 +688,10 @@ namespace Pome
     inline void ForStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ForEachStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void BlockStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
+    inline void BreakStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void ContinueStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void ThrowStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void TryCatchStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ReturnStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void ExpressionStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void FunctionDeclStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }

@@ -2,6 +2,50 @@
 
 Learn how to write robust Pome code and debug issues.
 
+## Exception Handling
+
+Pome provides a `try-catch` mechanism for handling runtime exceptions.
+
+### Try and Catch
+
+Use the `try` block to wrap code that might throw an error, and the `catch` block to handle it:
+
+```pome
+try {
+    // Potentially problematic code
+    doSomething();
+} catch (e) {
+    print("Caught an error:", e);
+}
+```
+
+If an error occurs in the `try` block, execution jumps to the `catch` block. The exception value is assigned to the variable specified in the `catch` clause (in this case, `e`).
+
+### Throwing Exceptions
+
+Use the `throw` statement to raise an exception:
+
+```pome
+fun validateAge(age) {
+    if (age < 0) {
+        throw "Age cannot be negative";
+    }
+}
+
+try {
+    validateAge(-5);
+} catch (e) {
+    print(e); // Output: Age cannot be negative
+}
+```
+
+### Current Status (Partial Implementation)
+
+- **Unwinding**: The VM currently performs basic stack unwinding when an exception is thrown.
+- **Catch Variable**: The `catch` variable is only scoped to the catch block.
+- **Rethrowing**: Not yet fully supported.
+- **Finally**: Not currently supported.
+
 ## Common Errors
 
 ### Syntax Errors

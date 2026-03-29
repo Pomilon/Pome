@@ -74,6 +74,10 @@ namespace Pome
         std::unique_ptr<Statement> parseWhileStatement();
         std::unique_ptr<Statement> parseForStatement();
         std::unique_ptr<Statement> parseReturnStatement();
+        std::unique_ptr<Statement> parseBreakStatement();
+        std::unique_ptr<Statement> parseContinueStatement();
+        std::unique_ptr<Statement> parseThrowStatement();
+        std::unique_ptr<Statement> parseTryCatchStatement();
         std::unique_ptr<Statement> parseExpressionStatement();
         std::unique_ptr<Statement> parseFunctionDeclaration();
         std::unique_ptr<Statement> parseClassDeclaration(); // Added

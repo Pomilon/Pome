@@ -1,0 +1,66 @@
+// Test Compound Assignment
+var a = 10;
+a += 5;
+print("a += 5:", a); // 15
+a -= 3;
+print("a -= 3:", a); // 12
+a *= 2;
+print("a *= 2:", a); // 24
+a /= 4;
+print("a /= 4:", a); // 6
+a %= 4;
+print("a %= 4:", a); // 2
+
+// Test Break
+var sum = 0;
+for (var i = 0; i < 10; i = i + 1) {
+    if (i == 5) break;
+    sum = sum + i;
+}
+print("break sum:", sum); // 0+1+2+3+4 = 10
+
+// Test Continue
+var oddSum = 0;
+for (var i = 0; i < 10; i = i + 1) {
+    if (i % 2 == 0) continue;
+    oddSum = oddSum + i;
+}
+print("continue sum:", oddSum); // 1+3+5+7+9 = 25
+
+// Test ForEach Break/Continue
+var listSum = 0;
+var list = [1, 2, 3, 4, 5, 6];
+for (var x in list) {
+    var val = list[x];
+    if (val % 2 == 0) continue;
+    if (val > 4) break;
+    listSum = listSum + val;
+}
+print("foreach sum:", listSum); // 1+3 = 4
+
+// Test Super
+class Base {
+    fun init(name) {
+        this.name = name;
+    }
+    fun greet() {
+        print("Hello from Base,", this.name);
+    }
+}
+
+class Derived extends Base {
+    fun init(name, age) {
+        // super.init(name); // super.init not yet usable as a constructor call desugaring?
+        // Let's test normal method call
+        this.name = name;
+        this.age = age;
+    }
+    fun greet() {
+        print("Derived greeting:");
+        super.greet();
+        print("Age:", this.age);
+    }
+}
+
+var d = Derived("Pome", 1);
+d.greet();

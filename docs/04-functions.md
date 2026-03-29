@@ -333,6 +333,60 @@ Output:
 Blastoff!
 ```
 
+## Closures
+
+Functions in Pome are **first-class citizens**, meaning they can be assigned to variables, passed as arguments, and returned from other functions.
+
+When a function is defined inside another function, it can "capture" variables from the outer scope. This is called a **closure**.
+
+```pome
+fun makeCounter() {
+    var count = 0;
+    
+    fun counter() {
+        count += 1;
+        return count;
+    }
+    
+    return counter;
+}
+
+var c1 = makeCounter();
+print(c1()); // Output: 1
+print(c1()); // Output: 2
+
+var c2 = makeCounter();
+print(c2()); // Output: 1 (Separate state from c1)
+```
+
+### Capture Rules
+
+- **Lexical Scoping**: Pome uses lexical scoping. A function can access variables defined in its surrounding scope at the time it was defined.
+- **Capture by Reference**: Variables are captured by reference. If the outer variable changes, the closure sees the updated value.
+- **Persistent State**: Captured variables persist as long as the closure exists, even after the outer function has finished executing.
+
+### Anonymous Functions (Function Expressions)
+
+You can define functions without a name:
+
+```pome
+var square = fun(x) {
+    return x * x;
+};
+
+print(square(5)); // Output: 25
+```
+
+Anonymous functions are often used as callbacks:
+
+```pome
+fun execute(fn, val) {
+    return fn(val);
+}
+
+print(execute(fun(x) { return x + 10; }, 5)); // Output: 15
+```
+
 ## Best Practices
 
 1. **Use meaningful names**: `calculateTotal` is better than `calc`

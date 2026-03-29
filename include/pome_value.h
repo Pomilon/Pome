@@ -179,6 +179,7 @@ namespace Pome
         std::vector<PomeValue> upvalues; // Captured variables
         uint16_t upvalueCount = 0; // Number of upvalues to capture
         class PomeModule* module = nullptr; // Parent module
+        class PomeClass* klass = nullptr; // Parent class (if method)
 
         ObjectType type() const override { return ObjectType::FUNCTION; }
         std::string toString() const override { return "<fn " + name + ">"; }
@@ -230,6 +231,7 @@ namespace Pome
     public:
         std::map<PomeValue, PomeValue> elements;
 
+        explicit PomeTable() {}
         explicit PomeTable(std::map<PomeValue, PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::TABLE; }
         std::string toString() const override;

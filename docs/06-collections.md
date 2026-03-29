@@ -79,10 +79,23 @@ print(combined);  // Output: [1, 2, 3, 4]
 
 ### Iterating Over Lists
 
+#### Standard For Loop
+
 ```pome
 var items = ["a", "b", "c"];
 for (var i = 0; i < len(items); i = i + 1) {
     print(items[i]);
+}
+```
+
+#### For-In Loop (ForEach)
+
+The `for ... in` loop is the preferred way to iterate over list elements:
+
+```pome
+var items = ["a", "b", "c"];
+for (var item in items) {
+    print(item);
 }
 ```
 

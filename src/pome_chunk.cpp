@@ -125,6 +125,9 @@ namespace Pome {
             case OpCode::INHERIT:
                 std::cout << "INHERIT   R" << a << " R" << b << std::endl;
                 break;
+            case OpCode::GETSUPER:
+                std::cout << "GETSUPER  R" << a << " R" << b << " K" << bx << " (" << chunk.constants[bx].toString() << ")" << std::endl;
+                break;
             case OpCode::AND:
                 std::cout << "AND       R" << a << " R" << b << " R" << c << std::endl;
                 break;
