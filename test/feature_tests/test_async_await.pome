@@ -1,0 +1,23 @@
+async fun slowCalculation() {
+    print("[Task] Starting slow calculation...");
+    var sum = 0;
+    for (var i = 0; i < 100; i = i + 1) {
+        sum = sum + i;
+    }
+    print("[Task] Done!");
+    return sum;
+}
+
+print("[Main] Calling async function...");
+var task = slowCalculation();
+print("[Main] Got task object:", task);
+
+print("[Main] Awaiting task...");
+var result = await task;
+print("[Main] Await result:", result);
+
+if (result == 4950) {
+    print("[Main] SUCCESS: Async/Await works!");
+} else {
+    print("[Main] FAILURE: result is", result);
+}

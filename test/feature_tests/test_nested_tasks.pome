@@ -1,0 +1,15 @@
+async fun innerTask() {
+    print("[Inner] Running...");
+    return "Inner Result";
+}
+
+async fun outerTask() {
+    print("[Outer] Starting inner task...");
+    var t = innerTask();
+    var res = await t;
+    print("[Outer] Inner task result:", res);
+}
+
+print("[Main] Calling outer task...");
+outerTask();
+print("[Main] End");

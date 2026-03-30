@@ -34,6 +34,16 @@ namespace Pome
          */
         PomeModule* createListModule(GarbageCollector& gc);
 
+        /**
+         * Creates and returns the 'threading' module
+         */
+        PomeModule* createThreadingModule(GarbageCollector& gc, ModuleLoader loader);
+
+        /**
+         * Creates and returns the 'ffi' module
+         */
+        PomeModule* createFFIModule(GarbageCollector& gc);
+
     }
 }
 

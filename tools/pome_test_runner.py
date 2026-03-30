@@ -58,18 +58,23 @@ if __name__ == "__main__":
         print(f"Error: Binary {POME_BIN} not found.")
         sys.exit(1)
 
-    tests = [os.path.join(TEST_DIR, f) for f in os.listdir(TEST_DIR) if f.endswith(".pome")]
-    tests.sort()
-
     passed = 0
-    for t in tests:
+    all_tests = []
+    for root, dirs, files in os.walk("test"):
+        for f in files:
+            if f.endswith(".pome"):
+                all_tests.append(os.path.join(root, f))
+    
+    all_tests.sort()
+
+    for t in all_tests:
         if run_test(t):
             passed += 1
             
     print("-" * 40)
-    print(f"Result: {passed}/{len(tests)} passed")
+    print(f"Result: {passed}/{len(all_tests)} passed")
     
-    if passed == len(tests):
+    if passed == len(all_tests):
         sys.exit(0)
     else:
         sys.exit(1)

@@ -1,0 +1,24 @@
+try {
+    print("In try block");
+    throw "Oops!";
+    print("This should not print");
+} catch (e) {
+    print("Caught exception:", e);
+}
+print("After try-catch");
+
+fun nested() {
+    try {
+        print("In nested try");
+        throw "Nested error";
+    } catch (e) {
+        print("Caught nested:", e);
+        throw e + " propagated";
+    }
+}
+
+try {
+    nested();
+} catch (e) {
+    print("Caught final:", e);
+}

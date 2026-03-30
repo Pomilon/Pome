@@ -1,0 +1,12 @@
+try {
+    var x = nil;
+    print(x.some_key); // This should be catchable
+} catch (e) {
+    print("Caught runtime error:", e);
+}
+
+try {
+    1 - "string"; // This IS a runtime error
+} catch (e) {
+    print("Caught arithmetic error:", e);
+}

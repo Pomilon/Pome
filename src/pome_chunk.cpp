@@ -180,8 +180,19 @@ namespace Pome {
             case OpCode::PRINT:
                 std::cout << "PRINT     R" << a << std::endl;
                 break;
-            case OpCode::RETURN:
-                std::cout << "RETURN    R" << a << " " << b << std::endl;
+            case OpCode::TRY:
+                std::cout << "TRY       sBx " << sbx << " (addr " << offset + 1 + sbx << ")" << std::endl;
+                break;
+            case OpCode::THROW:
+                std::cout << "THROW     R" << a << std::endl;
+                break;
+            case OpCode::CATCH:
+                std::cout << "CATCH     R" << a << std::endl;
+                break;
+            case OpCode::AWAIT:
+                std::cout << "AWAIT     R" << a << " R" << b << std::endl;
+                break;
+            case OpCode::RETURN:                std::cout << "RETURN    R" << a << " " << b << std::endl;
                 break;
             case OpCode::JMP:
                 std::cout << "JMP       " << sbx << " (Target: " << (offset + 1 + sbx) << ")" << std::endl;

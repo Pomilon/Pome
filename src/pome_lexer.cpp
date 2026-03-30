@@ -175,10 +175,10 @@ namespace Pome
          * Check for keywords
          */
         static const std::map<std::string, TokenType> keywords = {
-            {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"extends", TokenType::EXTENDS}, {"this", TokenType::THIS}, 
+            {"fun", TokenType::FUNCTION}, {"if", TokenType::IF}, {"else", TokenType::ELSE}, {"while", TokenType::WHILE}, {"for", TokenType::FOR}, {"return", TokenType::RETURN}, {"true", TokenType::TRUE}, {"false", TokenType::FALSE}, {"nil", TokenType::NIL}, {"import", TokenType::IMPORT}, {"from", TokenType::FROM}, {"export", TokenType::EXPORT}, {"var", TokenType::VAR}, {"class", TokenType::CLASS}, {"extends", TokenType::EXTENDS}, {"this", TokenType::THIS},
             {"break", TokenType::BREAK}, {"continue", TokenType::CONTINUE}, {"try", TokenType::TRY}, {"catch", TokenType::CATCH}, {"throw", TokenType::THROW}, {"super", TokenType::SUPER},
-            {"strict", TokenType::STRICT},
-            {"and", TokenType::AND},
+            {"async", TokenType::ASYNC}, {"await", TokenType::AWAIT},
+            {"strict", TokenType::STRICT},            {"and", TokenType::AND},
             {"or", TokenType::OR},
             {"not", TokenType::NOT}};
 

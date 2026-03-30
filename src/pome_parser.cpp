@@ -257,6 +257,19 @@ namespace Pome
         {
             return parseTableLiteral();
         }
+        case TokenType::ASYNC:
+        {
+            nextToken(); // Consume 'async'
+            if (currentToken_.type != TokenType::FUNCTION) {
+                error("Expected 'fun' after 'async'.");
+                return nullptr;
+            }
+            return parseFunctionExpression(true);
+        }
+        case TokenType::AWAIT:
+        {
+            return parseAwaitExpression();
+        }
         case TokenType::FUNCTION:
         {
             return parseFunctionExpression();
@@ -265,6 +278,16 @@ namespace Pome
             error("Unexpected token in expression: " + currentToken_.debugString());
             return nullptr;
         }
+    }
+
+    std::unique_ptr<Expression> Parser::parseAwaitExpression()
+    {
+        int line = currentToken_.line;
+        int col = currentToken_.column;
+        nextToken(); // Consume 'await'
+        auto value = parseExpression(Precedence::PREFIX);
+        if (!value) return nullptr;
+        return std::make_unique<AwaitExpr>(std::move(value), line, col);
     }
 
     std::unique_ptr<Expression> Parser::parseCallExpression(std::unique_ptr<Expression> callee)
@@ -450,7 +473,7 @@ namespace Pome
         return std::make_unique<TernaryExpr>(std::move(condition), std::move(thenExpr), std::move(elseExpr), line, col);
     }
 
-    std::unique_ptr<Expression> Parser::parseFunctionExpression()
+    std::unique_ptr<Expression> Parser::parseFunctionExpression(bool isAsync)
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
@@ -509,7 +532,7 @@ namespace Pome
             return nullptr;
         }
 
-        return std::make_unique<FunctionExpr>(funcName, std::move(params), std::move(body), line, col);
+        return std::make_unique<FunctionExpr>(funcName, std::move(params), std::move(body), line, col, isAsync);
     }
 
     std::unique_ptr<Expression> Parser::parseListLiteral()
@@ -635,6 +658,15 @@ namespace Pome
             return parseThrowStatement();
         case TokenType::TRY:
             return parseTryCatchStatement();
+        case TokenType::ASYNC:
+        {
+            nextToken(); // Consume ASYNC
+            if (currentToken_.type == TokenType::FUNCTION) {
+                return parseFunctionDeclaration(true);
+            }
+            error("Expected 'fun' after 'async'.");
+            return nullptr;
+        }
         case TokenType::FUNCTION: // Handle function declarations
             return parseFunctionDeclaration();
         case TokenType::CLASS: // Handle class declarations
@@ -1159,7 +1191,7 @@ namespace Pome
         }
     }
 
-    std::unique_ptr<Statement> Parser::parseFunctionDeclaration()
+    std::unique_ptr<Statement> Parser::parseFunctionDeclaration(bool isAsync)
     {
         int line = currentToken_.line;
         int col = currentToken_.column;
@@ -1221,7 +1253,7 @@ namespace Pome
         }
         nextToken(); // Consume '}'
 
-        return std::make_unique<FunctionDeclStmt>(funcName, std::move(params), std::move(body), line, col);
+        return std::make_unique<FunctionDeclStmt>(funcName, std::move(params), std::move(body), line, col, isAsync);
     }
 
     std::unique_ptr<Statement> Parser::parseClassDeclaration()
@@ -1523,36 +1555,56 @@ namespace Pome
         int line = currentToken_.line;
         int col = currentToken_.column;
         nextToken(); // Consume TRY
-        
-        if (!expect(TokenType::LBRACE)) return nullptr;
+
+        if (currentToken_.type != TokenType::LBRACE) {
+            error("Expected '{' after 'try'.");
+            return nullptr;
+        }
         nextToken(); // Consume '{'
         auto tryBlock = parseBlockStatement();
-        if (!expect(TokenType::RBRACE)) return nullptr;
+        if (currentToken_.type != TokenType::RBRACE) {
+            error("Expected '}' after 'try' block.");
+            return nullptr;
+        }
         nextToken(); // Consume '}'
-        
+
         if (currentToken_.type != TokenType::CATCH) {
             error("Expected 'catch' after 'try' block.");
             return nullptr;
         }
         nextToken(); // Consume CATCH
-        
-        if (!expect(TokenType::LPAREN)) return nullptr;
+
+        if (currentToken_.type != TokenType::LPAREN) {
+            error("Expected '(' after 'catch'.");
+            return nullptr;
+        }
         nextToken(); // Consume '('
+
         if (currentToken_.type != TokenType::IDENTIFIER) {
             error("Expected identifier for catch variable.");
             return nullptr;
         }
         std::string catchVar = currentToken_.value;
         nextToken(); // Consume identifier
-        if (!expect(TokenType::RPAREN)) return nullptr;
+
+        if (currentToken_.type != TokenType::RPAREN) {
+            error("Expected ')' after catch variable.");
+            return nullptr;
+        }
         nextToken(); // Consume ')'
-        
-        if (!expect(TokenType::LBRACE)) return nullptr;
+
+        if (currentToken_.type != TokenType::LBRACE) {
+            error("Expected '{' after 'catch'.");
+            return nullptr;
+        }
         nextToken(); // Consume '{'
         auto catchBlock = parseBlockStatement();
-        if (!expect(TokenType::RBRACE)) return nullptr;
+        if (currentToken_.type != TokenType::RBRACE) {
+            error("Expected '}' after 'catch' block.");
+            return nullptr;
+        }
         nextToken(); // Consume '}'
-        
+
         return std::make_unique<TryCatchStmt>(std::move(tryBlock), catchVar, std::move(catchBlock), line, col);
     }
 

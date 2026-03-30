@@ -48,3 +48,4 @@ vendor/
 
 # Pome specific files
 *.pomec
+test_io.txt

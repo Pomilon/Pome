@@ -11,6 +11,8 @@
 #include <cstdint> // For uint64_t, uintptr_t
 #include <variant> // For std::monostate
 #include <memory> // Added
+#include <thread> // Added for concurrency
+#include <atomic> // Added
 #include "pome_ast.h" // For Program definition
 
 namespace Pome
@@ -31,6 +33,8 @@ namespace Pome
         CLASS,
         INSTANCE,
         MODULE,
+        THREAD,
+        TASK,
         NATIVE_OBJECT // Added for native wrapper objects
     };
 
@@ -92,6 +96,7 @@ namespace Pome
         bool isClass() const;
         bool isInstance() const;
         bool isModule() const;
+        bool isTask() const;
 
         /**
          * Getters
@@ -132,6 +137,8 @@ namespace Pome
         bool operator==(const PomeValue &other) const;
         bool operator!=(const PomeValue &other) const { return !(*this == other); }
         bool operator<(const PomeValue &other) const;
+
+        PomeValue deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const;
 
         void mark(class GarbageCollector& gc) const;
 
@@ -175,9 +182,10 @@ namespace Pome
         std::string name;
         std::vector<std::string> parameters;
         const std::vector<std::unique_ptr<Statement>> *body = nullptr; // AST body
-        std::unique_ptr<Chunk> chunk; // Compiled bytecode
+        std::shared_ptr<Chunk> chunk; // Compiled bytecode
         std::vector<PomeValue> upvalues; // Captured variables
         uint16_t upvalueCount = 0; // Number of upvalues to capture
+        bool isAsync = false; // Whether this is an async function
         class PomeModule* module = nullptr; // Parent module
         class PomeClass* klass = nullptr; // Parent class (if method)
 
@@ -299,6 +307,54 @@ namespace Pome
         ObjectType type() const override { return ObjectType::MODULE; }
         std::string toString() const override { return "<module>"; }
         void markChildren(GarbageCollector& gc) override; // Declaration only
+    };
+
+    using ModuleLoader = std::function<PomeValue(const std::string&)>;
+
+    /**
+     * Thread Object (Isolate)
+     */
+    class PomeThread : public PomeObject
+    {
+    public:
+        std::thread handle;
+        std::atomic<bool> isFinished{false};
+        PomeValue result;
+        std::unique_ptr<class GarbageCollector> isolateGC; // Keep the child heap alive until joined
+
+        explicit PomeThread();
+        ~PomeThread() override;
+        ObjectType type() const override { return ObjectType::THREAD; }
+        std::string toString() const override { return "<thread>"; }
+        void markChildren(GarbageCollector& gc) override;
+    };
+
+    class PomeTask : public PomeObject
+    {
+    public:
+        PomeFunction* function = nullptr;
+        std::vector<PomeValue> args; // Arguments for the task
+        bool isCompleted = false;
+        PomeValue result;
+
+        explicit PomeTask(PomeFunction* fn) : function(fn) {}
+        ObjectType type() const override { return ObjectType::TASK; }
+        std::string toString() const override { return "<task>"; }
+        void markChildren(GarbageCollector& gc) override;
+    };
+
+    /**
+     * Native Wrapper Object
+     */
+    class PomeNativeObject : public PomeObject
+    {
+    public:
+        void* ptr = nullptr;
+        std::string tag; // Optional description/type name
+
+        explicit PomeNativeObject(void* p, std::string t = "native") : ptr(p), tag(std::move(t)) {}
+        ObjectType type() const override { return ObjectType::NATIVE_OBJECT; }
+        std::string toString() const override { return "<native " + tag + " at " + std::to_string((uintptr_t)ptr) + ">"; }
     };
 
 } // namespace Pome

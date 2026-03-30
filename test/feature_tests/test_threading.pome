@@ -1,0 +1,18 @@
+import threading;
+
+fun task() {
+    for (var i = 0; i < 50; i = i + 1) {
+        print("[Thread] Hello", i);
+    }
+}
+
+print("[Main] Spawning thread...");
+var t = threading.spawn(task);
+
+for (var i = 0; i < 50; i = i + 1) {
+    print("[Main] Running", i);
+}
+
+print("[Main] Joining thread...");
+threading.join(t);
+print("[Main] Done.");

@@ -34,6 +34,8 @@ namespace Pome
         CATCH,
         THROW,
         SUPER,
+        ASYNC,
+        AWAIT,
 
         // Operators
         PLUS,

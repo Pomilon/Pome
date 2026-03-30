@@ -1,0 +1,36 @@
+import ffi;
+
+// On Linux, libc is usually at libc.so.6
+var libc_path = "libc.so.6";
+var libc = ffi.load(libc_path);
+if (!libc) {
+    print("Failed to load libc from", libc_path);
+    exit(1);
+}
+
+var abs_func = ffi.get(libc, "abs");
+if (!abs_func) {
+    print("Failed to get 'abs' symbol from libc");
+    exit(1);
+}
+
+print("Calling abs(-42) via FFI...");
+// Updated API: call(func, retType, [argTypes], [args])
+var res = ffi.call(abs_func, "int", ["int"], [-42]);
+print("Result:", res);
+
+if (res == 42) {
+    print("SUCCESS: FFI works for int!");
+} else {
+    print("FAILURE: Result was", res);
+}
+
+// Test with string (strlen)
+var strlen_func = ffi.get(libc, "strlen");
+if (strlen_func) {
+    var len = ffi.call(strlen_func, "int", ["string"], ["Hello FFI"]);
+    print("strlen('Hello FFI') =", len);
+    if (len == 9) {
+        print("SUCCESS: FFI works for strings!");
+    }
+}

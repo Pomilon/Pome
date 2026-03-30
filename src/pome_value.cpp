@@ -7,7 +7,7 @@
 
 namespace Pome
 {
-    PomeFunction::PomeFunction() : chunk(std::make_unique<Chunk>()) {}
+    PomeFunction::PomeFunction() : chunk(std::make_shared<Chunk>()) {}
 
     /**
      * PomeValue implementation
@@ -339,6 +339,108 @@ namespace Pome
             key.mark(gc); // Key is PomeValue
             val.mark(gc); // Value is PomeValue
         }
+    }
+
+    void PomeThread::markChildren(GarbageCollector& gc) {
+        result.mark(gc);
+    }
+
+    void PomeTask::markChildren(GarbageCollector& gc) {
+        if (function) gc.markObject(function);
+        for (auto& arg : args) {
+            arg.mark(gc);
+        }
+        result.mark(gc);
+    }
+
+    PomeThread::PomeThread() {}
+
+    PomeThread::~PomeThread() {
+        if (handle.joinable()) handle.detach();
+    }
+
+    PomeValue PomeValue::deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const {
+        if (isNil() || isBool() || isNumber()) return *this;
+        if (!isObject()) return *this;
+
+        PomeObject* oldObj = asObject();
+        auto it = copiedObjects.find(oldObj);
+        if (it != copiedObjects.end()) {
+            return PomeValue(it->second);
+        }
+
+        PomeObject* newObj = nullptr;
+        switch (oldObj->type()) {
+            case ObjectType::STRING: {
+                PomeString* oldStr = (PomeString*)oldObj;
+                newObj = targetGC.allocate<PomeString>(oldStr->getValue());
+                break;
+            }
+            case ObjectType::LIST: {
+                PomeList* oldList = (PomeList*)oldObj;
+                PomeList* newList = targetGC.allocate<PomeList>();
+                copiedObjects[oldObj] = newList;
+                for (auto& val : oldList->elements) {
+                    newList->elements.push_back(val.deepCopy(targetGC, copiedObjects));
+                }
+                newObj = newList;
+                break;
+            }
+            case ObjectType::TABLE: {
+                PomeTable* oldTable = (PomeTable*)oldObj;
+                PomeTable* newTable = targetGC.allocate<PomeTable>();
+                copiedObjects[oldObj] = newTable;
+                for (auto const& [key, val] : oldTable->elements) {
+                    newTable->elements[key.deepCopy(targetGC, copiedObjects)] = val.deepCopy(targetGC, copiedObjects);
+                }
+                newObj = newTable;
+                break;
+            }
+            case ObjectType::FUNCTION: {
+                PomeFunction* oldFunc = (PomeFunction*)oldObj;
+                PomeFunction* newFunc = targetGC.allocate<PomeFunction>();
+                copiedObjects[oldObj] = newFunc;
+                newFunc->name = oldFunc->name;
+                newFunc->parameters = oldFunc->parameters;
+                newFunc->chunk = oldFunc->chunk; // Shared bytecode!
+                newFunc->isAsync = oldFunc->isAsync;
+                newFunc->upvalueCount = oldFunc->upvalueCount;
+                for (auto& uv : oldFunc->upvalues) {
+                    newFunc->upvalues.push_back(uv.deepCopy(targetGC, copiedObjects));
+                }
+                newObj = newFunc;
+                break;
+            }
+            case ObjectType::CLASS: {
+                PomeClass* oldClass = (PomeClass*)oldObj;
+                PomeClass* newClass = targetGC.allocate<PomeClass>(oldClass->name);
+                copiedObjects[oldObj] = newClass;
+                if (oldClass->superclass) {
+                    newClass->superclass = (PomeClass*)PomeValue(oldClass->superclass).deepCopy(targetGC, copiedObjects).asObject();
+                }
+                for (auto const& [name, method] : oldClass->methods) {
+                    newClass->methods[name] = (PomeFunction*)PomeValue(method).deepCopy(targetGC, copiedObjects).asObject();
+                }
+                newObj = newClass;
+                break;
+            }
+            case ObjectType::INSTANCE: {
+                PomeInstance* oldInst = (PomeInstance*)oldObj;
+                PomeClass* newClass = (PomeClass*)PomeValue(oldInst->klass).deepCopy(targetGC, copiedObjects).asObject();
+                PomeInstance* newInst = targetGC.allocate<PomeInstance>(newClass);
+                copiedObjects[oldObj] = newInst;
+                for (auto const& [name, val] : oldInst->fields) {
+                    newInst->fields[name] = val.deepCopy(targetGC, copiedObjects);
+                }
+                newObj = newInst;
+                break;
+            }
+            default:
+                return PomeValue();
+        }
+
+        if (newObj) copiedObjects[oldObj] = newObj;
+        return PomeValue(newObj);
     }
 
 } // namespace Pome

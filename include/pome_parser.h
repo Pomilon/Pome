@@ -58,7 +58,8 @@ namespace Pome
         std::unique_ptr<Expression> parseMemberAccessExpression(std::unique_ptr<Expression> object); // New method for member access
         std::unique_ptr<Expression> parseIndexExpression(std::unique_ptr<Expression> object);        // New method for index access
         std::unique_ptr<Expression> parseTernaryExpression(std::unique_ptr<Expression> condition);   // Added for ternary
-        std::unique_ptr<Expression> parseFunctionExpression();                                       // Added for anonymous functions
+        std::unique_ptr<Expression> parseFunctionExpression(bool isAsync = false);                                       // Added for anonymous functions
+        std::unique_ptr<Expression> parseAwaitExpression();                                         // Added for await expression
         std::unique_ptr<Expression> parseListLiteral();                                              // New method for list literals
         std::unique_ptr<Expression> parseTableLiteral();                                             // New method for table literals
 
@@ -79,7 +80,7 @@ namespace Pome
         std::unique_ptr<Statement> parseThrowStatement();
         std::unique_ptr<Statement> parseTryCatchStatement();
         std::unique_ptr<Statement> parseExpressionStatement();
-        std::unique_ptr<Statement> parseFunctionDeclaration();
+        std::unique_ptr<Statement> parseFunctionDeclaration(bool isAsync = false);
         std::unique_ptr<Statement> parseClassDeclaration(); // Added
         std::unique_ptr<Statement> parseImportStatement();
         std::unique_ptr<Statement> parseFromImportStatement();

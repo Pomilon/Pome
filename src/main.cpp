@@ -136,6 +136,8 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (moduleName == "string") return Pome::PomeValue(Pome::StdLib::createStringModule(gc));
                 if (moduleName == "time") return Pome::PomeValue(Pome::StdLib::createTimeModule(gc));
                 if (moduleName == "list") return Pome::PomeValue(Pome::StdLib::createListModule(gc));
+                if (moduleName == "threading") return Pome::PomeValue(Pome::StdLib::createThreadingModule(gc, loader));
+                if (moduleName == "ffi") return Pome::PomeValue(Pome::StdLib::createFFIModule(gc));
 
                 Pome::ResolutionResult result = resolver.resolve(moduleName);
 
@@ -262,7 +264,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
 
             // Standard Library Modules are now loaded via ModuleLoader
 
-            vm.interpret(chunk.get(), mainModule);
+            Pome::PomeValue result = vm.interpret(chunk.get(), mainModule);
             if (vm.hasError) return false;
         }
         return true;

@@ -78,6 +78,7 @@ namespace Pome {
         PomeFunction* func = gc.allocate<PomeFunction>();
         func->name = stmt.getName();
         func->parameters = stmt.getParams();
+        func->isAsync = stmt.isAsync();
         
         // 2. Compile function body into a new chunk using a separate compiler
         Compiler innerCompiler(gc, this);
@@ -878,6 +879,7 @@ namespace Pome {
         PomeFunction* func = gc.allocate<PomeFunction>();
         func->name = expr.getName().empty() ? "anonymous" : expr.getName();
         func->parameters = expr.getParams();
+        func->isAsync = expr.isAsync();
         
         // Setup new compiler state for inner function
         Compiler innerCompiler(gc, this);
@@ -1085,19 +1087,55 @@ namespace Pome {
     void Compiler::visit(ThrowStmt &stmt) {
         stmt.getValue()->accept(*this);
         int valReg = lastResultReg;
-        // Need THROW opcode
-        emit(Chunk::makeABC(OpCode::PRINT, valReg, 1, 0), stmt.getLine()); // Temporary hack: print then exit
-        std::cerr << "Runtime Error: Uncaught exception (Throw not fully implemented in VM yet)" << std::endl;
-        exit(1);
+        emit(Chunk::makeABC(OpCode::THROW, valReg, 0, 0), stmt.getLine());
     }
 
     void Compiler::visit(TryCatchStmt &stmt) {
-        // Need TRY/CATCH support in VM. 
-        // For now, just execute try block.
+        // Emit TRY. Jump to catch block if exception occurs.
+        int tryJump = emitJump(OpCode::TRY); // Dummy offset for now
+
+        // Compile try block
         for (const auto& s : stmt.getTryBlock()) {
             s->accept(*this);
             resetFreeReg();
         }
+
+        // Successfully finished try block, skip catch block
+        int skipCatch = emitJump(OpCode::JMP);
+
+        // Patch TRY jump to land at start of catch block
+        patchJump(tryJump);
+
+        // Catch: Retrieve pending exception and bind to variable
+        int catchReg = allocReg();
+        emit(Chunk::makeABC(OpCode::CATCH, catchReg, 0, 0), stmt.getLine());
+        
+        // Scope for catch variable
+        scopeDepth++;
+        locals.push_back({stmt.getCatchVar(), scopeDepth, catchReg});
+
+        // Compile catch block
+        for (const auto& s : stmt.getCatchBlock()) {
+            s->accept(*this);
+            resetFreeReg();
+        }
+
+        // Pop catch variable
+        while (!locals.empty() && locals.back().depth == scopeDepth) {
+            locals.pop_back();
+        }
+        scopeDepth--;
+
+        // Patch skip JMP
+        patchJump(skipCatch);
+    }
+
+    void Compiler::visit(AwaitExpr &expr) {
+        expr.getValue()->accept(*this);
+        int valReg = lastResultReg;
+        int resReg = allocReg();
+        emit(Chunk::makeABC(OpCode::AWAIT, resReg, valReg, 0), expr.getLine());
+        lastResultReg = resReg;
     }
 
     void Compiler::visit(SuperExpr &expr) {

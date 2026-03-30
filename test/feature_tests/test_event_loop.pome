@@ -1,0 +1,14 @@
+async fun task1() {
+    print("[Task 1] Start");
+    print("[Task 1] End");
+}
+
+async fun task2() {
+    print("[Task 2] Start");
+    print("[Task 2] End");
+}
+
+print("[Main] Starting tasks...");
+task1();
+task2();
+print("[Main] Main script end");

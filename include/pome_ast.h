@@ -44,6 +44,7 @@ namespace Pome
             THIS_EXPR,    // New node type for 'this'
             SUPER_EXPR,   // New node type for 'super'
             FUNCTION_EXPR, // New node type for function expressions
+            AWAIT_EXPR,   // New node type for 'await'
             /**
              * Specific statements
              */
@@ -309,17 +310,31 @@ namespace Pome
     {
     public:
         FunctionExpr(const std::string &name, std::vector<std::string> params,
-                     std::vector<std::unique_ptr<Statement>> body, int line, int col)
-            : Expression(FUNCTION_EXPR, line, col), name_(name), params_(std::move(params)), body_(std::move(body)) {}
+                     std::vector<std::unique_ptr<Statement>> body, int line, int col, bool isAsync = false)
+            : Expression(FUNCTION_EXPR, line, col), name_(name), params_(std::move(params)), body_(std::move(body)), isAsync_(isAsync) {}
         const std::string &getName() const { return name_; }
         const std::vector<std::string> &getParams() const { return params_; }
         const std::vector<std::unique_ptr<Statement>> &getBody() const { return body_; }
+        bool isAsync() const { return isAsync_; }
         void accept(ASTVisitor &visitor) override;
 
     private:
         std::string name_;
         std::vector<std::string> params_;
         std::vector<std::unique_ptr<Statement>> body_;
+        bool isAsync_;
+    };
+
+    class AwaitExpr : public Expression
+    {
+    public:
+        AwaitExpr(std::unique_ptr<Expression> value, int line, int col)
+            : Expression(AWAIT_EXPR, line, col), value_(std::move(value)) {}
+        Expression *getValue() const { return value_.get(); }
+        void accept(ASTVisitor &visitor) override;
+
+    private:
+        std::unique_ptr<Expression> value_;
     };
 
     /**
@@ -510,17 +525,19 @@ namespace Pome
     {
     public:
         FunctionDeclStmt(const std::string &name, std::vector<std::string> params,
-                         std::vector<std::unique_ptr<Statement>> body, int line, int col)
-            : Statement(FUNCTION_DECL_STMT, line, col), name_(name), params_(std::move(params)), body_(std::move(body)) {}
+                         std::vector<std::unique_ptr<Statement>> body, int line, int col, bool isAsync = false)
+            : Statement(FUNCTION_DECL_STMT, line, col), name_(name), params_(std::move(params)), body_(std::move(body)), isAsync_(isAsync) {}
         const std::string &getName() const { return name_; }
         const std::vector<std::string> &getParams() const { return params_; }
         const std::vector<std::unique_ptr<Statement>> &getBody() const { return body_; }
+        bool isAsync() const { return isAsync_; }
         void accept(ASTVisitor &visitor) override;
 
     private:
         std::string name_;
         std::vector<std::string> params_;
         std::vector<std::unique_ptr<Statement>> body_;
+        bool isAsync_;
     };
 
     class ClassDeclStmt : public Statement
@@ -633,6 +650,7 @@ namespace Pome
         virtual void visit(TernaryExpr &expr) = 0;
         virtual void visit(FunctionExpr &expr) = 0;
         virtual void visit(SuperExpr &expr) = 0;
+        virtual void visit(AwaitExpr &expr) = 0;
 
         /**
          * Statements
@@ -680,6 +698,7 @@ namespace Pome
     inline void SliceExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); } // Added
     inline void TernaryExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void FunctionExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+    inline void AwaitExpr::accept(ASTVisitor &visitor) { visitor.visit(*this); }
 
     inline void VarDeclStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }
     inline void AssignStmt::accept(ASTVisitor &visitor) { visitor.visit(*this); }

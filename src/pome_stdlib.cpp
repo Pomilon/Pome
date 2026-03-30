@@ -1,4 +1,5 @@
 #include "../include/pome_stdlib.h"
+#include "../include/pome_vm.h"
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -8,6 +9,9 @@
 #include <chrono> // Added for Time Module
 #include <thread> // Added for Time Module
 #include <optional> // Added for arg parsing helper
+
+#include <dlfcn.h>
+#include <ffi.h>
 
 namespace Pome
 {
@@ -236,9 +240,88 @@ namespace Pome
 
             return module;
         }
+/**
+ * --- Threading Module ---
+ */
+PomeModule *createThreadingModule(GarbageCollector &gc, ModuleLoader loader)
+{
+    PomeModule *module = gc.allocate<PomeModule>();
 
-        /**
-         * --- Time Module ---
+    registerNative(gc, module, "spawn", [&gc, loader](const std::vector<PomeValue> &args)
+    {
+        if (args.size() < 1 || !args[0].isPomeFunction()) {
+            return PomeValue(); // Needs a function
+        }
+
+        PomeFunction* originalFn = args[0].asPomeFunction();
+
+        PomeThread* threadObj = gc.allocate<PomeThread>();
+
+        // Capture and deep-copy arguments for the thread
+        std::vector<PomeValue> originalArgs;
+        for (size_t i = 1; i < args.size(); ++i) originalArgs.push_back(args[i]);
+
+        threadObj->handle = std::thread([originalFn, originalArgs, loader, threadObj]() {
+            auto threadGC = std::make_unique<GarbageCollector>();
+            VM threadVM(*threadGC, loader);
+
+            std::map<PomeObject*, PomeObject*> copiedObjects;
+            PomeFunction* clonedFn = (PomeFunction*)PomeValue(originalFn).deepCopy(*threadGC, copiedObjects).asObject();
+
+            std::vector<PomeValue> threadArgs;
+            for (auto& arg : originalArgs) {
+                threadArgs.push_back(arg.deepCopy(*threadGC, copiedObjects));
+            }
+
+            // Register standard globals for the new isolate
+            threadVM.registerGlobal("PI", PomeValue(3.141592653589793));
+            threadVM.registerNative("print", [](const std::vector<PomeValue>& args) {
+                for (size_t i = 0; i < args.size(); ++i) {
+                    std::cout << args[i].toString() << (i == args.size() - 1 ? "" : " ");
+                }
+                std::cout << std::endl;
+                return PomeValue(std::monostate{});
+            });
+
+            try {
+                threadObj->result = threadVM.interpret(clonedFn->chunk.get(), clonedFn->module);
+            } catch (const std::exception& e) {
+                std::cerr << "[Thread] Fatal error in isolate: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[Thread] Unknown fatal error in isolate." << std::endl;
+            }
+            threadObj->isFinished = true;
+            threadObj->isolateGC = std::move(threadGC); // Move it to threadObj to keep it alive
+        });
+        return PomeValue(threadObj);
+    });
+
+    registerNative(gc, module, "join", [&gc](const std::vector<PomeValue> &args) {
+        if (args.empty() || !args[0].isObject() || args[0].asObject()->type() != ObjectType::THREAD) {
+            return PomeValue(std::monostate{});
+        }
+        PomeThread* threadObj = (PomeThread*)args[0].asObject();
+        if (threadObj->handle.joinable()) {
+            threadObj->handle.join();
+        }
+        
+        // At this point, the thread is finished, and isolateGC keeps its heap alive.
+        // We MUST deep-copy the result into the current VM's GC heap.
+        std::map<PomeObject*, PomeObject*> copiedObjects;
+        PomeValue result = threadObj->result.deepCopy(gc, copiedObjects);
+        
+        // After deep-copying, we can release the child heap.
+        threadObj->isolateGC.reset();
+        
+        return result;
+    });
+
+    return module;
+}
+
+/**
+ * --- Time Module ---
+...
          */
 
         PomeModule *createTimeModule(GarbageCollector &gc)
@@ -261,6 +344,109 @@ namespace Pome
                 double seconds = args[0].asNumber();
                 std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
                 return PomeValue(std::monostate{}); 
+            });
+
+            return module;
+        }
+
+        /**
+         * --- FFI Module ---
+         */
+        PomeModule *createFFIModule(GarbageCollector &gc)
+        {
+            PomeModule *module = gc.allocate<PomeModule>();
+
+            registerNative(gc, module, "load", [&gc](const std::vector<PomeValue> &args)
+                           {
+                if (args.empty() || !args[0].isString()) return PomeValue(std::monostate{});
+                void* handle = dlopen(args[0].asString().c_str(), RTLD_LAZY);
+                if (!handle) {
+                    std::cerr << "FFI Error: " << dlerror() << std::endl;
+                    return PomeValue(std::monostate{});
+                }
+                return PomeValue(gc.allocate<PomeNativeObject>(handle, "lib")); 
+            });
+
+            registerNative(gc, module, "get", [&gc](const std::vector<PomeValue> &args)
+                           {
+                if (args.size() < 2 || !args[0].isObject() || args[0].asObject()->type() != ObjectType::NATIVE_OBJECT || !args[1].isString()) {
+                    return PomeValue(std::monostate{});
+                }
+                void* handle = ((PomeNativeObject*)args[0].asObject())->ptr;
+                void* addr = dlsym(handle, args[1].asString().c_str());
+                if (!addr) {
+                    std::cerr << "FFI Error: " << dlerror() << std::endl;
+                    return PomeValue(std::monostate{});
+                }
+                return PomeValue(gc.allocate<PomeNativeObject>(addr, "func")); 
+            });
+
+            registerNative(gc, module, "call", [&gc](const std::vector<PomeValue> &args)
+                           {
+                if (args.size() < 4 || !args[0].isObject() || args[0].asObject()->type() != ObjectType::NATIVE_OBJECT) {
+                    return PomeValue(std::monostate{});
+                }
+                void* addr = ((PomeNativeObject*)args[0].asObject())->ptr;
+                std::string retTypeStr = args[1].toString();
+                
+                ffi_cif cif;
+                ffi_type *types[16];
+                void *values[16];
+                
+                // Storage for different types
+                double d_args[16];
+                int i_args[16];
+                const char* s_args[16];
+                
+                int argCount = 0;
+                if (args[2].isList() && args[3].isList()) {
+                    PomeList* typeList = args[2].asList();
+                    PomeList* valList = args[3].asList();
+                    argCount = (int)valList->elements.size();
+                    for (int i = 0; i < argCount && i < 16; ++i) {
+                        std::string t = typeList->elements[i].toString();
+                        if (t == "int") {
+                            types[i] = &ffi_type_sint;
+                            i_args[i] = (int)valList->elements[i].asNumber();
+                            values[i] = &i_args[i];
+                        } else if (t == "string") {
+                            types[i] = &ffi_type_pointer;
+                            s_args[i] = valList->elements[i].asString().c_str();
+                            values[i] = &s_args[i];
+                        } else {
+                            types[i] = &ffi_type_double;
+                            d_args[i] = valList->elements[i].asNumber();
+                            values[i] = &d_args[i];
+                        }
+                    }
+                }
+
+                ffi_type* retType = &ffi_type_void;
+                if (retTypeStr == "int") retType = &ffi_type_sint;
+                else if (retTypeStr == "double") retType = &ffi_type_double;
+                else if (retTypeStr == "string") retType = &ffi_type_pointer;
+                
+                if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, argCount, retType, types) == FFI_OK) {
+                    if (retType == &ffi_type_double) {
+                        double result;
+                        ffi_call(&cif, FFI_FN(addr), &result, values);
+                        return PomeValue(result);
+                    } else if (retType == &ffi_type_sint) {
+                        int result;
+                        ffi_call(&cif, FFI_FN(addr), &result, values);
+                        return PomeValue((double)result);
+                    } else if (retType == &ffi_type_pointer) {
+                        char* result;
+                        ffi_call(&cif, FFI_FN(addr), &result, values);
+                        if (result) return PomeValue(gc.allocate<PomeString>(result));
+                        return PomeValue(std::monostate{});
+                    } else {
+                        ffi_call(&cif, FFI_FN(addr), nullptr, values);
+                        return PomeValue(std::monostate{});
+                    }
+                }
+                
+                return PomeValue(std::monostate{});
             });
 
             return module;

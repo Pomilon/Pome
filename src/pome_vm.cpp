@@ -14,9 +14,14 @@ namespace Pome {
         frames.resize(1024);  
         stackTop = 0;
         gc.setVM(this); 
+        pendingException = PomeValue();
     }
 
     VM::~VM() {
+    }
+
+    void VM::throwException(PomeValue value) {
+        throw VMException(value);
     }
 
     PomeValue VM::loadNativeModule(const std::string& libraryPath, PomeModule* moduleObj) {
@@ -44,28 +49,32 @@ namespace Pome {
     }
 
     void VM::runtimeError(const std::string& message) {
-        std::cerr << RED << "Runtime Error: " << RESET << message << std::endl;
-        
-        for (int i = frameCount - 1; i >= 0; i--) {
-            CallFrame* frame = &frames[i];
-            size_t offset = frame->ip - frame->chunk->code.data();
-            if (offset > 0) offset--; 
+        if (handlers.empty()) {
+            std::cerr << RED << "Runtime Error: " << RESET << message << std::endl;
             
-            int line = (offset < (int)frame->chunk->lines.size()) ? frame->chunk->lines[offset] : -1;
-            
-            std::string loc = "script";
-            if (frame->function) {
-                loc = "function " + frame->function->name;
-                if (frame->function->module && !frame->function->module->scriptPath.empty()) {
-                    loc += " in " + frame->function->module->scriptPath;
+            for (int i = frameCount - 1; i >= 0; i--) {
+                CallFrame* frame = &frames[i];
+                size_t offset = frame->ip - frame->chunk->code.data();
+                if (offset > 0) offset--; 
+                
+                int line = (offset < (int)frame->chunk->lines.size()) ? frame->chunk->lines[offset] : -1;
+                
+                std::string loc = "script";
+                if (frame->function) {
+                    loc = "function " + frame->function->name;
+                    if (frame->function->module && !frame->function->module->scriptPath.empty()) {
+                        loc += " in " + frame->function->module->scriptPath;
+                    }
+                } else if (currentModule && !currentModule->scriptPath.empty()) {
+                    loc = currentModule->scriptPath;
                 }
-            } else if (currentModule && !currentModule->scriptPath.empty()) {
-                loc = currentModule->scriptPath;
-            }
 
-            std::cerr << "  at line " << line << " in " << loc << std::endl;
+                std::cerr << "  at line " << line << " in " << loc << std::endl;
+            }
+            hasError = true;
         }
-        hasError = true;
+
+        throwException(PomeValue(gc.allocate<PomeString>(message)));
     }
     
     void VM::markRoots() {
@@ -89,6 +98,10 @@ namespace Pome {
                 }
             }
         }
+
+        for (auto task : taskQueue) {
+            gc.markObject(task);
+        }
     }
 
     void VM::registerNative(const std::string& name, NativeFn fn) {
@@ -106,8 +119,8 @@ namespace Pome {
     #define COMPUTED_GOTO 1
 #endif
 
-    void VM::interpret(Chunk* chunk, PomeModule* module) {
-        if (!chunk) return;
+    PomeValue VM::interpret(Chunk* chunk, PomeModule* module) {
+        if (!chunk) return PomeValue();
         hasError = false;
         
         PomeModule* savedModule = currentModule;
@@ -147,6 +160,8 @@ namespace Pome {
         stackTop += 256; 
         if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
 
+    LABEL_EXCEPTION_LOOP:
+        try {
 #ifdef COMPUTED_GOTO
         static void* dispatchTable[] = {
             &&LABEL_MOVE, &&LABEL_LOADK, &&LABEL_LOADBOOL, &&LABEL_LOADNIL,
@@ -159,18 +174,20 @@ namespace Pome {
             &&LABEL_FORLOOP, &&LABEL_FORPREP,
             &&LABEL_TFORCALL, &&LABEL_TFORLOOP,
             &&LABEL_IMPORT, &&LABEL_EXPORT, &&LABEL_INHERIT, &&LABEL_GETSUPER, &&LABEL_GETITER,
-            &&LABEL_AND, &&LABEL_OR, &&LABEL_SLICE, &&LABEL_PRINT
-        };
-        
+            &&LABEL_AND, &&LABEL_OR, &&LABEL_SLICE, &&LABEL_PRINT,
+            &&LABEL_TRY, &&LABEL_THROW, &&LABEL_CATCH,
+            &&LABEL_ASYNC, &&LABEL_AWAIT
+            };        
         #define DISPATCH() \
             do { \
                 instruction = *ip++; \
+                OpCode op = Chunk::getOpCode(instruction); \
                 a = Chunk::getA(instruction); \
                 b = Chunk::getB(instruction); \
                 c = Chunk::getC(instruction); \
                 bx = Chunk::getBx(instruction); \
                 sbx = Chunk::getSBx(instruction); \
-                goto *dispatchTable[static_cast<uint8_t>(Chunk::getOpCode(instruction))]; \
+                goto *dispatchTable[static_cast<uint8_t>(op)]; \
             } while (false)
 
         DISPATCH();
@@ -308,7 +325,7 @@ namespace Pome {
                 } else {
                     SAVE_FRAME();
                     runtimeError("Attempt to index " + obj.toString());
-                    return;
+                    return PomeValue();
                 }
             }
             DISPATCH();
@@ -402,7 +419,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -418,7 +435,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -434,7 +451,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -449,13 +466,13 @@ namespace Pome {
                 if (v2.asNumber() == 0.0) {
                     SAVE_FRAME();
                     runtimeError("Division by zero.");
-                    return;
+                    return PomeValue();
                 }
                 stack[frameBase + a] = PomeValue(v1.asNumber() / v2.asNumber());
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -471,7 +488,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -487,7 +504,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -521,12 +538,12 @@ namespace Pome {
                 } else {
                     SAVE_FRAME();
                     runtimeError("Unary negation not implemented for this instance.");
-                    return;
+                    return PomeValue();
                 }
             } else {
                 SAVE_FRAME();
                 runtimeError("Arithmetic on non-number.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -634,7 +651,19 @@ namespace Pome {
                 DISPATCH();
             } else if (callee.isPomeFunction()) {
                 PomeFunction* func = callee.asPomeFunction();
+
                 int argCount = b - 1;
+                if (func->isAsync) {
+                    PomeTask* task = gc.allocate<PomeTask>(func);
+                    for (int i = 0; i < argCount; ++i) {
+                        task->args.push_back(stack[frameBase + a + 1 + i]);
+                    }
+                    taskQueue.push_back(task);
+                    stack[frameBase + a] = PomeValue(task);
+                    SAVE_FRAME();
+                    DISPATCH();
+                }
+
                 int paramCount = (int)func->parameters.size();
                 if (argCount > paramCount && argCount > 0) {
                     if (stack[frameBase + a + 1].isModule()) {
@@ -680,7 +709,7 @@ namespace Pome {
             } else {
                 SAVE_FRAME();
                 runtimeError("Object is not callable.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -697,16 +726,53 @@ namespace Pome {
             case OpCode::RETURN:
             #endif
             PomeValue result = (b > 1) ? stack[frameBase + a] : PomeValue();
-            
+
+            if (frames[frameCount-1].task) {
+                frames[frameCount-1].task->result = result;
+                frames[frameCount-1].task->isCompleted = true;
+            }
+
+            // Pop handlers belonging to this frame
+
+            while (!handlers.empty() && handlers.back().frameIdx >= frameCount - 1) {
+                handlers.pop_back();
+            }
+
             frameCount--;
             if (frameCount <= initialFrameIdx) {
+                while (!taskQueue.empty()) {
+                    PomeTask* task = taskQueue.front();
+                    taskQueue.pop_front();
+                    if (task->isCompleted) continue;
+
+                    if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
+                    CallFrame* nextFrame = &frames[frameCount++];
+                    nextFrame->function = task->function;
+                    nextFrame->chunk = task->function->chunk.get();
+                    nextFrame->ip = task->function->chunk->code.data();
+                    nextFrame->base = stackTop;
+                    nextFrame->destReg = -1;
+                    nextFrame->task = task;
+
+                    for (size_t i = 0; i < (int)task->args.size(); ++i) {
+                        stack[stackTop + i] = task->args[i];
+                    }
+
+                    REFRESH_FRAME();
+                    stackTop += 256;
+                    if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
+                    DISPATCH();
+                }
                 currentModule = savedModule;
-                return; 
+                return result;
             }
-            
+
             int dest = frames[frameCount].destReg;
+
             REFRESH_FRAME();
-            stack[frameBase + dest] = result;
+            if (dest != -1) {
+                stack[frameBase + dest] = result;
+            }
             DISPATCH();
         }
 
@@ -811,7 +877,7 @@ namespace Pome {
                     REFRESH_FRAME();
                     if (mod.isNil()) {
                         runtimeError("Cannot find module '" + name + "'");
-                        return;
+                        return PomeValue();
                     }
                     if (mod.isModule()) moduleCache[name] = mod;
                     stack[frameBase + a] = mod;
@@ -842,13 +908,13 @@ namespace Pome {
             if (!classVal.isClass()) {
                 SAVE_FRAME();
                 runtimeError("Inheritance target must be a class.");
-                return;
+                return PomeValue();
             }
             if (!superVal.isNil()) {
                 if (!superVal.isClass()) {
                     SAVE_FRAME();
                     runtimeError("Superclass must be a class.");
-                    return;
+                    return PomeValue();
                 }
                 classVal.asClass()->superclass = superVal.asClass();
             }
@@ -868,12 +934,12 @@ namespace Pome {
                 } else {
                     SAVE_FRAME();
                     runtimeError("Superclass '" + super->name + "' has no method '" + methodName.asString() + "'");
-                    return;
+                    return PomeValue();
                 }
             } else {
                 SAVE_FRAME();
                 runtimeError("'super' used in a class with no superclass or outside of a method.");
-                return;
+                return PomeValue();
             }
             DISPATCH();
         }
@@ -963,6 +1029,83 @@ namespace Pome {
             DISPATCH();
         }
 
+        LABEL_TRY: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::TRY:
+            #endif
+            handlers.push_back({frameCount - 1, ip + sbx, stackTop});
+            DISPATCH();
+        }
+
+        LABEL_THROW: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::THROW:
+            #endif
+            SAVE_FRAME();
+            throwException(stack[frameBase + a]);
+            DISPATCH();
+        }
+
+        LABEL_CATCH: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::CATCH:
+            #endif
+            stack[frameBase + a] = pendingException;
+            pendingException = PomeValue(); // Clear it
+            DISPATCH();
+        }
+
+        LABEL_ASYNC: {
+           #ifndef COMPUTED_GOTO
+           case OpCode::ASYNC:
+           #endif
+           PomeValue callee = stack[frameBase + b];
+           if (callee.isPomeFunction()) {
+               PomeFunction* func = callee.asPomeFunction();
+               PomeTask* task = gc.allocate<PomeTask>(func);
+               taskQueue.push_back(task);
+               stack[frameBase + a] = PomeValue(task);
+           } else {
+               runtimeError("ASYNC requires a Pome function.");
+               return PomeValue();
+           }
+           DISPATCH();
+        }
+        LABEL_AWAIT: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::AWAIT:
+            #endif
+            PomeValue val = stack[frameBase + b];
+            if (val.isObject() && val.asObject()->type() == ObjectType::TASK) {
+                PomeTask* task = (PomeTask*)val.asObject();
+                if (!task->isCompleted) {
+                    SAVE_FRAME();
+                    if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
+                    CallFrame* nextFrame = &frames[frameCount++];
+                    nextFrame->function = task->function;
+                    nextFrame->chunk = task->function->chunk.get();
+                    nextFrame->ip = task->function->chunk->code.data();
+                    nextFrame->base = stackTop;
+                    nextFrame->destReg = a;
+                    nextFrame->task = task;
+                    // Copy arguments to the new frame's stack
+                    for (size_t i = 0; i < task->args.size(); ++i) {
+                        stack[stackTop + i] = task->args[i];
+                    }
+                    
+                    REFRESH_FRAME();
+                    stackTop += 256;
+                    if (stackTop + 256 >= (int)stack.size()) stack.resize(stack.size() * 2);
+                    DISPATCH();
+                } else {
+                    stack[frameBase + a] = task->result;
+                }
+            } else {
+                stack[frameBase + a] = val;
+            }
+            DISPATCH();
+        }
+
         LABEL_CLOSURE: {
             #ifndef COMPUTED_GOTO
             case OpCode::CLOSURE:
@@ -973,6 +1116,7 @@ namespace Pome {
             closure->parameters = proto->parameters;
             closure->chunk = std::make_unique<Chunk>(*proto->chunk);
             closure->upvalueCount = proto->upvalueCount;
+            closure->isAsync = proto->isAsync;
             closure->module = currentModule;
             closure->klass = proto->klass;
 
@@ -991,10 +1135,37 @@ namespace Pome {
 
 #ifndef COMPUTED_GOTO
             default:
-                return;
+                return PomeValue();
             }
         }
 #endif
+        } catch (const VMException& e) {
+            if (handlers.empty()) {
+                hasError = true;
+                currentModule = savedModule;
+                return e.value;
+            }
+
+            pendingException = e.value;
+            ExceptionHandler handler = handlers.back();
+            handlers.pop_back();
+
+            // Unwind call stack
+            frameCount = handler.frameIdx + 1;
+            REFRESH_FRAME();
+            
+            // Restore state
+            ip = handler.catchIp;
+            stackTop = handler.stackTop;
+            
+            // Ensure frame IP is consistent
+            currentFrame->ip = ip;
+
+            goto LABEL_EXCEPTION_LOOP;
+        }
+
+        runEventLoop();
+        return PomeValue(); // Return result of main chunk if needed, but for now nil is fine
     }
 
 }

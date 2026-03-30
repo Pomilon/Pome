@@ -49,6 +49,7 @@ namespace Pome {
         void visit(ThrowStmt& stmt) override;
         void visit(TryCatchStmt& stmt) override;
         void visit(SuperExpr& expr) override;
+        void visit(AwaitExpr& expr) override;
         void visit(BlockStmt& stmt) override; // Added
         void visit(SliceExpr& expr) override;
         void visit(TernaryExpr& expr) override;

@@ -23,8 +23,8 @@ set(LIB_SOURCES
 add_library(libpome SHARED ${LIB_SOURCES})
 set_target_properties(libpome PROPERTIES OUTPUT_NAME "pome")
 
-# Link against dynamic loading library (dl on Linux)
-target_link_libraries(libpome PUBLIC ${CMAKE_DL_LIBS})
+# Link against dynamic loading library (dl on Linux) and libffi
+target_link_libraries(libpome PUBLIC ${CMAKE_DL_LIBS} ffi)
 
 # Add include directories for the library
 target_include_directories(libpome PUBLIC

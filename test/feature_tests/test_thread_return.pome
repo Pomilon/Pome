@@ -1,0 +1,23 @@
+import threading;
+
+fun task() {
+    print("[Thread] Calculating...");
+    var sum = 0;
+    for (var i = 0; i < 100; i = i + 1) {
+        sum = sum + i;
+    }
+    return sum;
+}
+
+print("[Main] Spawning thread...");
+var t = threading.spawn(task);
+
+print("[Main] Waiting for result...");
+var res = threading.join(t);
+print("[Main] Result from thread:", res);
+
+if (res == 4950) {
+    print("[Main] SUCCESS: Result is correct!");
+} else {
+    print("[Main] FAILURE: Result is incorrect or nil.");
+}

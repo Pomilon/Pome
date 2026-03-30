@@ -58,7 +58,12 @@ namespace Pome {
         AND,
         OR,
         SLICE,
-        PRINT
+        PRINT,
+        TRY,        // Added for error handling
+        THROW,      // Added for error handling
+        CATCH,      // Retrieve pending exception
+        ASYNC,      // Create a task from a function
+        AWAIT       // Suspend and wait for a task
     };
 
 }
