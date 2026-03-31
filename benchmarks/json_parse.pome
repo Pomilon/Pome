@@ -1,0 +1,121 @@
+import time;
+
+// Simplified JSON parser for small structures
+class Parser {
+    fun init(source) {
+        this.source = source;
+        this.pos = 0;
+    }
+    
+    fun peek() {
+        if (this.pos >= len(this.source)) return nil;
+        return this.source[this.pos];
+    }
+    
+    fun advance() {
+        var c = this.peek();
+        this.pos = this.pos + 1;
+        return c;
+    }
+    
+    fun skipWhitespace() {
+        while (true) {
+            var c = this.peek();
+            if (c == " " or c == "\n" or c == "\t" or c == "\r") {
+                this.advance();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    fun parse() {
+        this.skipWhitespace();
+        var c = this.peek();
+        if (c == "{") return this.parseObject();
+        if (c == "[") return this.parseArray();
+        if (c == "\"") return this.parseString();
+        return this.parseLiteral();
+    }
+    
+    fun parseObject() {
+        this.advance(); // {
+        var obj = {};
+        while (true) {
+            this.skipWhitespace();
+            var c = this.peek();
+            if (c == "}" or c == nil) {
+                if (c == "}") this.advance();
+                break;
+            }
+            var key = this.parseString();
+            this.skipWhitespace();
+            var sep = this.advance(); // :
+            var val = this.parse();
+            obj[key] = val;
+            this.skipWhitespace();
+            var next_c = this.peek();
+            if (next_c == ",") {
+                this.advance();
+            }
+        }
+        return obj;
+    }
+    
+    fun parseArray() {
+        this.advance(); // [
+        var arr = [];
+        while (true) {
+            this.skipWhitespace();
+            var c = this.peek();
+            if (c == "]" or c == nil) {
+                if (c == "]") this.advance();
+                break;
+            }
+            push(arr, this.parse());
+            this.skipWhitespace();
+            var next_c = this.peek();
+            if (next_c == ",") {
+                this.advance();
+            }
+        }
+        return arr;
+    }
+    
+    fun parseString() {
+        this.advance(); // "
+        var res = "";
+        while (true) {
+            var c = this.advance();
+            if (c == "\"" or c == nil) break;
+            res = res + c;
+        }
+        return res;
+    }
+
+    fun parseLiteral() {
+        var res = "";
+        while (true) {
+            var c = this.peek();
+            if (c == nil or c == " " or c == "\n" or c == "," or c == "}" or c == "]" or c == ":") break;
+            res = res + this.advance();
+        }
+        return res;
+    }
+}
+
+// N injected: iterations
+if (N == nil) var N = 1000;
+
+var jsonStr = "{\"name\":\"Pome\",\"version\":\"1.0\",\"tags\":[\"fast\",\"dynamic\",\"fun\"],\"meta\":{\"author\":\"dev\"}}";
+
+var start = time.clock();
+var last_obj = nil;
+for (var i = 0; i < N; i = i + 1) {
+    var p = Parser(jsonStr);
+    last_obj = p.parse();
+}
+var end = time.clock();
+
+print(last_obj["name"]);
+print("Time: " + (end - start) + "s");

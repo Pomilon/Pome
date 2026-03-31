@@ -53,7 +53,8 @@ namespace Pome
          */
         bool isMarked = false;
         uint8_t generation = 0; // 0 = Young, 1 = Old
-        size_t gcSize = 0; // Size of the object for GC accounting
+        uint8_t age = 0;        // Age in young generation
+        size_t gcSize = 0;      // Size of the object for GC accounting
         PomeObject* next = nullptr;
 
         virtual void markChildren(class GarbageCollector& gc) {} // Mark children for GC
@@ -169,6 +170,7 @@ namespace Pome
         ObjectType type() const override { return ObjectType::STRING; }
         std::string toString() const override { return value_; }
         const std::string &getValue() const { return value_; }
+        size_t extraSize() const { return value_.capacity(); }
 
     private:
         std::string value_;
@@ -231,6 +233,7 @@ namespace Pome
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;
         void markChildren(class GarbageCollector& gc) override;
+        size_t extraSize() const { return elements.capacity() * sizeof(PomeValue); }
     };
 
     /**
@@ -257,6 +260,7 @@ namespace Pome
         std::string name;
         class PomeClass* superclass = nullptr;
         std::map<std::string, PomeFunction*> methods;
+        std::map<std::string, uint8_t> fieldNames; // name -> index in fieldsArray
 
         explicit PomeClass(std::string name) : name(std::move(name)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
@@ -285,14 +289,20 @@ namespace Pome
     public:
         PomeClass* klass;
         std::map<std::string, PomeValue> fields;
+        
+        // Fast fields
+        PomeValue* fieldsArray = nullptr;
+        uint8_t fieldCount = 0;
 
         explicit PomeInstance(PomeClass* k) : klass(k) {}
+        ~PomeInstance() override { if (fieldsArray) delete[] fieldsArray; }
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
         void markChildren(class GarbageCollector& gc) override;
 
         PomeValue get(const std::string &name);
         void set(const std::string &name, PomeValue value);
+        void setFieldsArray(class GarbageCollector& gc, uint8_t count);
     };
 
     /**

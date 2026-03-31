@@ -1,0 +1,65 @@
+import time;
+
+// Simple graph shortest path
+fun dijkstra(nodes, edges, start_node) {
+    var distances = {};
+    var visited = {};
+    for (var i = 0; i < len(nodes); i += 1) {
+        distances[nodes[i]] = 1000000000; // Infinity
+    }
+    distances[start_node] = 0;
+    
+    for (var count = 0; count < len(nodes); count += 1) {
+        var min_dist = 1000000000;
+        var u = -1;
+        
+        // Find unvisited node with smallest distance
+        for (var i = 0; i < len(nodes); i += 1) {
+            var n = nodes[i];
+            if (visited[n] == nil and distances[n] < min_dist) {
+                min_dist = distances[n];
+                u = n;
+            }
+        }
+        
+        if (u == -1) break;
+        visited[u] = true;
+        
+        // Update distances
+        var neighbors = edges[u];
+        if (neighbors != nil) {
+            for (var i = 0; i < len(neighbors); i += 1) {
+                var edge = neighbors[i]; // [v, weight]
+                var v = edge[0];
+                var weight = edge[1];
+                if (distances[u] + weight < distances[v]) {
+                    distances[v] = distances[u] + weight;
+                }
+            }
+        }
+    }
+    return distances;
+}
+
+// N injected: Number of nodes
+if (N == nil) var N = 200;
+
+var nodes = [];
+var edges = {};
+for (var i = 0; i < N; i += 1) {
+    push(nodes, i);
+    var neighbors = [];
+    // Each node connects to next 5 nodes
+    for (var j = 1; j <= 5; j += 1) {
+        var v = (i + j) % N;
+        push(neighbors, [v, j * 1.5]);
+    }
+    edges[i] = neighbors;
+}
+
+var start = time.clock();
+var d = dijkstra(nodes, edges, 0);
+var end = time.clock();
+
+print(d[N-1]);
+print("Time: " + (end - start) + "s");

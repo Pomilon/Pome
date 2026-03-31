@@ -11,4 +11,5 @@ for x in l:
     total += x
 
 end = time.time()
-print(f"Time: {end - start:.4f}s. Sum: {total}")
+print(total)
+print(f"Time: {end - start:.4f}s")

@@ -1,0 +1,80 @@
+import time;
+
+fun fannkuch(n) {
+    var p = [];
+    var q = [];
+    var s = [];
+    for (var i = 0; i < n; i += 1) {
+        push(p, i);
+        push(q, i);
+        push(s, i);
+    }
+    
+    var sign = 1;
+    var max_flips = 0;
+    var sum = 0;
+    
+    while (true) {
+        var q0 = p[0];
+        if (q0 != 0) {
+            for (var i = 1; i < n; i += 1) q[i] = p[i];
+            var flips = 1;
+            while (true) {
+                var qq0 = q[q0];
+                if (qq0 == 0) {
+                    if (flips > max_flips) max_flips = flips;
+                    sum += sign * flips;
+                    break;
+                }
+                q[q0] = q0;
+                if (q0 >= 3) {
+                    var i = 1;
+                    var j = q0 - 1;
+                    while (i < j) {
+                        var t = q[i];
+                        q[i] = q[j];
+                        q[j] = t;
+                        i += 1;
+                        j -= 1;
+                    }
+                }
+                q0 = qq0;
+                flips += 1;
+            }
+        }
+        
+        // Permutation
+        if (sign == 1) {
+            var t = p[1]; p[1] = p[0]; p[0] = t;
+            sign = -1;
+        } else {
+            var t = p[1]; p[1] = p[2]; p[2] = t;
+            sign = 1;
+            var i = 2;
+            while (true) {
+                var sx = s[i];
+                if (sx != 0) {
+                    s[i] = sx - 1;
+                    break;
+                }
+                if (i == n - 1) return [sum, max_flips];
+                s[i] = i;
+                // rotate
+                var t = p[0];
+                for (var j = 0; j <= i; j += 1) p[j] = p[j+1];
+                p[i+1] = t;
+                i += 1;
+            }
+        }
+    }
+}
+
+// N injected
+if (N == nil) var N = 8;
+
+var start = time.clock();
+var res = fannkuch(N);
+var end = time.clock();
+
+print(res[0] + " " + res[1]);
+print("Time: " + (end - start) + "s");

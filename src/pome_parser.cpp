@@ -1002,18 +1002,52 @@ namespace Pome
                 if (currentToken_.type != TokenType::RPAREN)
                 {
                     auto expr = parseExpression();
-                    if (peekToken_.type == TokenType::ASSIGN)
+                    if (peekToken_.type == TokenType::ASSIGN ||
+                        peekToken_.type == TokenType::PLUS_ASSIGN || peekToken_.type == TokenType::MINUS_ASSIGN ||
+                        peekToken_.type == TokenType::MULT_ASSIGN || peekToken_.type == TokenType::DIV_ASSIGN ||
+                        peekToken_.type == TokenType::MOD_ASSIGN)
                     {
-                        IdentifierExpr *idExpr = dynamic_cast<IdentifierExpr *>(expr.get());
-                        if (!idExpr)
+                        bool isValidLValue = (dynamic_cast<IdentifierExpr *>(expr.get()) != nullptr) ||
+                                             (dynamic_cast<IndexExpr *>(expr.get()) != nullptr) ||
+                                             (dynamic_cast<MemberAccessExpr *>(expr.get()) != nullptr);
+
+                        if (!isValidLValue)
                         {
                             error("Invalid left-hand side in assignment.");
                             return nullptr;
                         }
-                        nextToken(); // Consume target.
-                        nextToken(); // Consume ASSIGN.
+
+                        nextToken(); // Consume last token of target. currentToken_ is now ASSIGN.
+                        TokenType opType = currentToken_.type;
+                        nextToken(); // Consume ASSIGN. currentToken_ is now start of RHS.
+
                         auto value = parseExpression(LOWEST);
-                        increment = std::make_unique<AssignStmt>(std::move(expr), std::move(value), line, col);
+                        if (!value)
+                            return nullptr;
+
+                        std::string binaryOp = "";
+                        switch (opType)
+                        {
+                        case TokenType::PLUS_ASSIGN:
+                            binaryOp = "+";
+                            break;
+                        case TokenType::MINUS_ASSIGN:
+                            binaryOp = "-";
+                            break;
+                        case TokenType::MULT_ASSIGN:
+                            binaryOp = "*";
+                            break;
+                        case TokenType::DIV_ASSIGN:
+                            binaryOp = "/";
+                            break;
+                        case TokenType::MOD_ASSIGN:
+                            binaryOp = "%";
+                            break;
+                        default:
+                            break;
+                        }
+
+                        increment = std::make_unique<AssignStmt>(std::move(expr), std::move(value), line, col, binaryOp);
                     }
                     else
                     {

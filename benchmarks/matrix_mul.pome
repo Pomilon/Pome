@@ -1,0 +1,45 @@
+import time;
+
+fun matrix_mul(A, B, size) {
+    var C = [];
+    for (var i = 0; i < size; i += 1) {
+        var row = [];
+        for (var j = 0; j < size; j += 1) {
+            push(row, 0.0);
+        }
+        push(C, row);
+    }
+    
+    for (var i = 0; i < size; i += 1) {
+        for (var k = 0; k < size; k += 1) {
+            var aik = A[i][k];
+            for (var j = 0; j < size; j += 1) {
+                C[i][j] += aik * B[k][j];
+            }
+        }
+    }
+    return C;
+}
+
+// N injected: size of matrix
+if (N == nil) var N = 100;
+
+var A = [];
+var B = [];
+for (var i = 0; i < N; i += 1) {
+    var rowA = [];
+    var rowB = [];
+    for (var j = 0; j < N; j += 1) {
+        push(rowA, i + j);
+        push(rowB, i - j);
+    }
+    push(A, rowA);
+    push(B, rowB);
+}
+
+var start = time.clock();
+var C = matrix_mul(A, B, N);
+var end = time.clock();
+
+print(C[0][0]);
+print("Time: " + (end - start) + "s");

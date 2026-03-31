@@ -3,12 +3,16 @@ import time;
 // N is injected by runner
 fun run() {
     var i = 0;
+    var sum = 0;
     while (i < N) {
+        sum = sum + i;
         i = i + 1;
     }
+    return sum;
 }
 
 var start = time.clock();
-run();
+var final_sum = run();
 var end = time.clock();
+print(final_sum);
 print("Time: " + (end - start) + "s");

@@ -239,7 +239,10 @@ namespace Pome {
     void Compiler::visit(IdentifierExpr &expr) {
         int reg = resolveLocal(expr.getName());
         if (reg != -1) {
-            lastResultReg = reg;
+            int dest = allocReg();
+            emit(Chunk::makeABC(OpCode::MOVE, dest, reg, 0), expr.getLine());
+            lastResultReg = dest;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -247,6 +250,7 @@ namespace Pome {
             int dest = allocReg();
             emit(Chunk::makeABC(OpCode::GETUPVAL, dest, reg, 0), expr.getLine());
             lastResultReg = dest;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -258,6 +262,7 @@ namespace Pome {
         
         emit(Chunk::makeABx(OpCode::GETGLOBAL, dest, nameIdx), expr.getLine());
         lastResultReg = dest;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(BinaryExpr &expr) {
@@ -279,6 +284,7 @@ namespace Pome {
             
             patchJump(jumpToEnd);
             lastResultReg = resReg;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -298,6 +304,7 @@ namespace Pome {
             
             patchJump(jumpToEnd);
             lastResultReg = resReg;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -324,19 +331,36 @@ namespace Pome {
                     PomeString* nameStr = gc.allocate<PomeString>(ident->getName());
                     int nameIdx = addConstant(PomeValue(nameStr));
                     emit(Chunk::makeABx(OpCode::SETGLOBAL, valReg, nameIdx), expr.getLine());
+                    lastResultReg = valReg;
                 }
             } else if (auto member = dynamic_cast<MemberAccessExpr*>(expr.getLeft())) {
                 // obj.member = value
                 member->getObject()->accept(*this);
-                int objReg = lastResultReg;
-                
-                expr.getRight()->accept(*this);
-                int valReg = lastResultReg;
+                int objReg = allocReg();
+                emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), expr.getLine());
                 
                 PomeString* keyStr = gc.allocate<PomeString>(member->getMember());
                 int keyIdx = addConstant(PomeValue(keyStr));
                 int keyReg = allocReg();
                 emit(Chunk::makeABx(OpCode::LOADK, keyReg, keyIdx), expr.getLine());
+
+                expr.getRight()->accept(*this);
+                int valReg = lastResultReg;
+                
+                emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, valReg), expr.getLine());
+                lastResultReg = valReg;
+            } else if (auto index = dynamic_cast<IndexExpr*>(expr.getLeft())) {
+                // obj[index] = value
+                index->getObject()->accept(*this);
+                int objReg = allocReg();
+                emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), expr.getLine());
+                
+                index->getIndex()->accept(*this);
+                int keyReg = allocReg();
+                emit(Chunk::makeABC(OpCode::MOVE, keyReg, lastResultReg, 0), expr.getLine());
+                
+                expr.getRight()->accept(*this);
+                int valReg = lastResultReg;
                 
                 emit(Chunk::makeABC(OpCode::SETTABLE, objReg, keyReg, valReg), expr.getLine());
                 lastResultReg = valReg;
@@ -344,6 +368,7 @@ namespace Pome {
                 std::cerr << "Compiler Error: Invalid assignment target." << std::endl;
                 exit(1);
             }
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -354,10 +379,7 @@ namespace Pome {
         expr.getRight()->accept(*this);
         int rightReg = lastResultReg;
         
-        int resReg = allocReg();
-        
         OpCode op = OpCode::ADD;
-        bool swap = false;
         bool invert = false;
 
         if (oper == "+") op = OpCode::ADD;
@@ -368,45 +390,72 @@ namespace Pome {
         else if (oper == "^") op = OpCode::POW;
         else if (oper == "<") op = OpCode::LT;
         else if (oper == "<=") op = OpCode::LE;
-        else if (oper == ">") { op = OpCode::LT; swap = true; }
-        else if (oper == ">=") { op = OpCode::LE; swap = true; }
+        else if (oper == ">") {
+            op = OpCode::LT;
+            // Swap operands: left > right  =>  right < left
+            int temp = leftReg;
+            leftReg = rightReg;
+            rightReg = temp;
+        }
+        else if (oper == ">=") {
+            op = OpCode::LE;
+            // Swap operands: left >= right  =>  right <= left
+            int temp = leftReg;
+            leftReg = rightReg;
+            rightReg = temp;
+        }
         else if (oper == "==") op = OpCode::EQ;
         else if (oper == "!=") { op = OpCode::EQ; invert = true; }
         
-        if (swap) {
-            emit(Chunk::makeABC(op, resReg, rightReg, leftReg), expr.getLine());
-        } else {
-            emit(Chunk::makeABC(op, resReg, leftReg, rightReg), expr.getLine());
-        }
+        int resReg = allocReg();
+        emit(Chunk::makeABC(op, resReg, leftReg, rightReg), expr.getLine());
         
         if (invert) {
             emit(Chunk::makeABC(OpCode::NOT, resReg, resReg, 0), expr.getLine());
         }
 
         lastResultReg = resReg;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(VarDeclStmt &stmt) {
+        // Check if it already exists in THIS scope (e.g. inside a loop)
+        for (int i = (int)locals.size() - 1; i >= 0; i--) {
+            if (locals[i].depth < scopeDepth) break; 
+            if (locals[i].name == stmt.getName()) {
+                // Re-initialize existing local
+                if (stmt.getInitializer()) {
+                    stmt.getInitializer()->accept(*this);
+                    emit(Chunk::makeABC(OpCode::MOVE, locals[i].reg, lastResultReg, 0), stmt.getLine());
+                } else {
+                    emit(Chunk::makeABC(OpCode::LOADNIL, locals[i].reg, 0, 0), stmt.getLine());
+                }
+                lastResultReg = locals[i].reg;
+                return;
+            }
+        }
+
+        int reg = allocReg();
         if (stmt.getInitializer()) {
             stmt.getInitializer()->accept(*this);
+            emit(Chunk::makeABC(OpCode::MOVE, reg, lastResultReg, 0), stmt.getLine());
         } else {
-            int reg = allocReg();
             emit(Chunk::makeABC(OpCode::LOADNIL, reg, 0, 0), stmt.getLine());
-            lastResultReg = reg;
         }
         
-        locals.push_back({stmt.getName(), scopeDepth, lastResultReg});
+        locals.push_back({stmt.getName(), scopeDepth, reg});
+        lastResultReg = reg;
     }
     
     void Compiler::visit(AssignStmt &stmt) {
         std::string op = stmt.getOp();
 
-        // 1. Evaluate RHS
-        stmt.getValue()->accept(*this);
-        int rhsReg = lastResultReg;
-
         // 2. Resolve target and potentially fetch current value for compound ops
         if (auto ident = dynamic_cast<IdentifierExpr*>(stmt.getTarget())) {
+            // Evaluate RHS first for identifiers
+            stmt.getValue()->accept(*this);
+            int rhsReg = lastResultReg;
+
             int localReg = resolveLocal(ident->getName());
             int upvalIdx = -1;
 
@@ -467,13 +516,19 @@ namespace Pome {
                 }
             }
         } else if (auto member = dynamic_cast<MemberAccessExpr*>(stmt.getTarget())) {
+            // Evaluate target components FIRST
             member->getObject()->accept(*this);
-            int objReg = lastResultReg;
+            int objReg = allocReg();
+            emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), stmt.getLine());
 
             PomeString* keyStr = gc.allocate<PomeString>(member->getMember());
             int keyIdx = addConstant(PomeValue(keyStr));
             int keyReg = allocReg();
             emit(Chunk::makeABx(OpCode::LOADK, keyReg, keyIdx), stmt.getLine());
+
+            // Evaluate RHS
+            stmt.getValue()->accept(*this);
+            int rhsReg = lastResultReg;
 
             if (!op.empty()) {
                 int currentValReg = allocReg();
@@ -492,10 +547,18 @@ namespace Pome {
                 lastResultReg = rhsReg;
             }
         } else if (auto index = dynamic_cast<IndexExpr*>(stmt.getTarget())) {
+            // Evaluate target components FIRST
             index->getObject()->accept(*this);
-            int objReg = lastResultReg;
+            int objReg = allocReg();
+            emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), stmt.getLine());
+
             index->getIndex()->accept(*this);
-            int keyReg = lastResultReg;
+            int keyReg = allocReg();
+            emit(Chunk::makeABC(OpCode::MOVE, keyReg, lastResultReg, 0), stmt.getLine());
+
+            // Evaluate RHS
+            stmt.getValue()->accept(*this);
+            int rhsReg = lastResultReg;
 
             if (!op.empty()) {
                 int currentValReg = allocReg();
@@ -514,28 +577,30 @@ namespace Pome {
                 lastResultReg = rhsReg;
             }
         }
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(ExpressionStmt &stmt) {
         stmt.getExpression()->accept(*this);
+        resetFreeReg();
     }
 
     void Compiler::visit(MemberAccessExpr &expr) {
         expr.getObject()->accept(*this);
-        int objReg = lastResultReg;
-        
+        int objReg = allocReg();
+        emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), expr.getLine());
+
         PomeString* memberStr = gc.allocate<PomeString>(expr.getMember());
         int memberIdx = addConstant(PomeValue(memberStr));
-        
-        int dest = allocReg();
-        // Since RK(C) logic is not yet in Compiler, we LOADK the key first.
+
         int keyReg = allocReg();
         emit(Chunk::makeABx(OpCode::LOADK, keyReg, memberIdx), expr.getLine());
-        
+
+        int dest = objReg; 
         emit(Chunk::makeABC(OpCode::GETTABLE, dest, objReg, keyReg), expr.getLine());
         lastResultReg = dest;
+        freeReg = lastResultReg + 1;
     }
-
     void Compiler::visit(CallExpr &expr) {
         // Native PRINT hack for speed
         if (auto ident = dynamic_cast<IdentifierExpr*>(expr.getCallee())) {
@@ -583,6 +648,7 @@ namespace Pome {
             
             emit(Chunk::makeABC(OpCode::CALL, calleeReg, argCount + 2, 1), expr.getLine());
             lastResultReg = calleeReg;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -610,6 +676,7 @@ namespace Pome {
             
             emit(Chunk::makeABC(OpCode::CALL, calleeReg, argCount + 2, 1), expr.getLine());
             lastResultReg = calleeReg;
+            freeReg = lastResultReg + 1;
             return;
         }
 
@@ -629,6 +696,7 @@ namespace Pome {
         
         emit(Chunk::makeABC(OpCode::CALL, callBase, argCount + 1, 1), expr.getLine());
         lastResultReg = callBase;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(ClassDeclStmt &stmt) {
@@ -659,6 +727,39 @@ namespace Pome {
                 resetFreeReg();
             }
             if (func->name == "init") {
+                // Instant Init Optimization: Detect simple field-to-param assignments
+                // e.g. this.item = item; this.left = left; this.right = right;
+                bool isSimpleInit = true;
+                int identifiedFields = 0;
+                for (const auto& s : method->getBody()) {
+                    bool validLine = false;
+                    if (auto assign = dynamic_cast<AssignStmt*>(s.get())) {
+                        if (auto member = dynamic_cast<MemberAccessExpr*>(assign->getTarget())) {
+                            if (dynamic_cast<ThisExpr*>(member->getObject())) {
+                                std::string fieldName = member->getMember();
+                                if (auto ident = dynamic_cast<IdentifierExpr*>(assign->getValue())) {
+                                    for (size_t i = 0; i < func->parameters.size(); ++i) {
+                                        if (func->parameters[i] == ident->getName()) {
+                                            klass->fieldNames[fieldName] = (uint8_t)i;
+                                            identifiedFields++;
+                                            validLine = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!validLine) {
+                        isSimpleInit = false;
+                        break;
+                    }
+                }
+
+                if (!isSimpleInit || identifiedFields != (int)method->getBody().size()) {
+                    klass->fieldNames.clear();
+                }
+
                 // Constructors return 'this' (R1)
                 emit(Chunk::makeABC(OpCode::RETURN, 1, 2, 0), method->getLine());
             } else {
@@ -786,55 +887,60 @@ namespace Pome {
         
         emit(Chunk::makeABC(op, dest, operandReg, 0), expr.getLine());
         lastResultReg = dest;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(ListExpr &expr) {
         int tableReg = allocReg();
-        emit(Chunk::makeABC(OpCode::NEWLIST, tableReg, 0, 0), 0); 
-        
+        emit(Chunk::makeABC(OpCode::NEWLIST, tableReg, 0, 0), expr.getLine());
+
         const auto& elements = expr.getElements();
         for (size_t i = 0; i < elements.size(); ++i) {
             int keyReg = allocReg();
             int constIdx = addConstant(PomeValue((double)i));
-            emit(Chunk::makeABx(OpCode::LOADK, keyReg, constIdx), 0);
-            
+            emit(Chunk::makeABx(OpCode::LOADK, keyReg, constIdx), expr.getLine());
+
             elements[i]->accept(*this);
             int valReg = lastResultReg;
-            
-            emit(Chunk::makeABC(OpCode::SETTABLE, tableReg, keyReg, valReg), 0);
+
+            emit(Chunk::makeABC(OpCode::SETTABLE, tableReg, keyReg, valReg), expr.getLine());
+            freeReg = tableReg + 1;
         }
         lastResultReg = tableReg;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(TableExpr &expr) {
         int tableReg = allocReg();
-        emit(Chunk::makeABC(OpCode::NEWTABLE, tableReg, 0, 0), 0);
-        
+        emit(Chunk::makeABC(OpCode::NEWTABLE, tableReg, 0, 0), expr.getLine());
+
         for (const auto& pair : expr.getEntries()) {
             pair.first->accept(*this);
-            int keyReg = lastResultReg;
-            
+            int keyReg = allocReg();
+            emit(Chunk::makeABC(OpCode::MOVE, keyReg, lastResultReg, 0), expr.getLine());
+
             pair.second->accept(*this);
             int valReg = lastResultReg;
-            
-            emit(Chunk::makeABC(OpCode::SETTABLE, tableReg, keyReg, valReg), 0);
-            // resetFreeReg(); // REMOVED
+
+            emit(Chunk::makeABC(OpCode::SETTABLE, tableReg, keyReg, valReg), expr.getLine());
+            freeReg = tableReg + 1;
         }
         lastResultReg = tableReg;
+        freeReg = lastResultReg + 1;
     }
-
     void Compiler::visit(IndexExpr &expr) {
         expr.getObject()->accept(*this);
-        int objReg = lastResultReg;
-        
+        int objReg = allocReg();
+        emit(Chunk::makeABC(OpCode::MOVE, objReg, lastResultReg, 0), expr.getLine());
+
         expr.getIndex()->accept(*this);
         int keyReg = lastResultReg;
-        
-        int dest = allocReg();
-        emit(Chunk::makeABC(OpCode::GETTABLE, dest, objReg, keyReg), 0);
-        lastResultReg = dest;
-    }
 
+        int dest = objReg;
+        emit(Chunk::makeABC(OpCode::GETTABLE, dest, objReg, keyReg), expr.getLine());
+        lastResultReg = dest;
+        freeReg = lastResultReg + 1;
+    }
     void Compiler::visit(SliceExpr &expr) {
         expr.getObject()->accept(*this);
         int objReg = lastResultReg;
@@ -861,6 +967,7 @@ namespace Pome {
         int dest = allocReg();
         emit(Chunk::makeABC(OpCode::SLICE, dest, objReg, base), expr.getLine());
         lastResultReg = dest;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(TernaryExpr &expr) {
@@ -881,6 +988,7 @@ namespace Pome {
         
         patchJump(jumpToEnd);
         lastResultReg = resReg;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(FunctionExpr &expr) {
@@ -924,6 +1032,7 @@ namespace Pome {
         }
 
         lastResultReg = reg;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(ImportStmt &stmt) {
@@ -1145,6 +1254,7 @@ namespace Pome {
         int resReg = allocReg();
         emit(Chunk::makeABC(OpCode::AWAIT, resReg, valReg, 0), expr.getLine());
         lastResultReg = resReg;
+        freeReg = lastResultReg + 1;
     }
 
     void Compiler::visit(SuperExpr &expr) {

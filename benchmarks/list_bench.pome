@@ -16,4 +16,5 @@ for (var x in l) {
 }
 
 var elapsed = time.clock() - start;
-print("Time: " + elapsed + "s. Sum: " + sum);
+print(sum);
+print("Time: " + elapsed + "s");

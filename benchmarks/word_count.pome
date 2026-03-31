@@ -1,0 +1,43 @@
+import time;
+
+fun word_count(text, iterations) {
+    var counts = {};
+    for (var i = 0; i < iterations; i += 1) {
+        var word = "";
+        for (var j = 0; j < len(text); j += 1) {
+            var c = text[j];
+            if (c == " " or c == "\n" or c == "\t") {
+                if (len(word) > 0) {
+                    if (counts[word] == nil) {
+                        counts[word] = 1;
+                    } else {
+                        counts[word] += 1;
+                    }
+                    word = "";
+                }
+            } else {
+                word = word + c;
+            }
+        }
+        if (len(word) > 0) {
+            if (counts[word] == nil) {
+                counts[word] = 1;
+            } else {
+                counts[word] += 1;
+            }
+        }
+    }
+    return counts;
+}
+
+// N injected: iterations
+if (N == nil) var N = 1000;
+
+var text = "the quick brown fox jumps over the lazy dog and the quick brown fox jumps again and again";
+
+var start = time.clock();
+var counts = word_count(text, N);
+var end = time.clock();
+
+print(counts["the"]);
+print("Time: " + (end - start) + "s");

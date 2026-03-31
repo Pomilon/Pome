@@ -1,0 +1,38 @@
+import time;
+
+fun binary_search(arr, target) {
+    var low = 0;
+    var high = len(arr) - 1;
+    while (low <= high) {
+        var mid = (low + high) / 2;
+        mid = mid - (mid % 1); // floor
+        if (arr[mid] == target) return mid;
+        if (arr[mid] < target) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return -1;
+}
+
+// N injected: number of searches
+if (N == nil) var N = 10000;
+var data_size = 10000;
+
+var data = [];
+for (var i = 0; i < data_size; i += 1) {
+    push(data, i);
+}
+
+var start = time.clock();
+var found = 0;
+for (var i = 0; i < N; i += 1) {
+    if (binary_search(data, i % data_size) != -1) {
+        found += 1;
+    }
+}
+var end = time.clock();
+
+print(found);
+print("Time: " + (end - start) + "s");

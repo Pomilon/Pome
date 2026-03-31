@@ -1,0 +1,41 @@
+import time;
+
+fun quickSort(arr) {
+    if (len(arr) <= 1) return arr;
+    
+    var pivot = arr[0];
+    var left = [];
+    var right = [];
+    
+    for (var i = 1; i < len(arr); i += 1) {
+        if (arr[i] < pivot) {
+            push(left, arr[i]);
+        } else {
+            push(right, arr[i]);
+        }
+    }
+    
+    var result = quickSort(left);
+    push(result, pivot);
+    var sorted_right = quickSort(right);
+    for (var i = 0; i < len(sorted_right); i += 1) {
+        push(result, sorted_right[i]);
+    }
+    
+    return result;
+}
+
+// N injected: size of list
+if (N == nil) var N = 1000;
+
+var data = [];
+for (var i = 0; i < N; i += 1) {
+    push(data, (i * 1103515245 + 12345) % N);
+}
+
+var start = time.clock();
+var sorted = quickSort(data);
+var end = time.clock();
+
+print(len(sorted));
+print("Time: " + (end - start) + "s");

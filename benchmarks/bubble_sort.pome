@@ -1,0 +1,29 @@
+import time;
+
+fun bubbleSort(arr) {
+    var n = len(arr);
+    for (var i = 0; i < n; i += 1) {
+        for (var j = 0; j < n - i - 1; j += 1) {
+            if (arr[j] > arr[j + 1]) {
+                var temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+        }
+    }
+}
+
+// N injected: size of list
+if (N == nil) var N = 1000;
+
+var data = [];
+for (var i = 0; i < N; i += 1) {
+    push(data, N - i);
+}
+
+var start = time.clock();
+bubbleSort(data);
+var end = time.clock();
+
+print(data[0] + " " + data[N - 1]);
+print("Time: " + (end - start) + "s");

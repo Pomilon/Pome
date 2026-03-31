@@ -16,4 +16,5 @@ while i < N:
     total += p.dist()
     i += 1
 end = time.time()
-print(f"Time: {end - start:.4f}s. Sum: {total}")
+print(total)
+print(f"Time: {end - start:.4f}s")

@@ -2,6 +2,7 @@
 #define POME_CHUNK_H
 
 #include <vector>
+#include <map>
 #include <cstdint>
 #include "pome_opcode.h"
 #include "pome_value.h"
@@ -10,12 +11,20 @@ namespace Pome {
 
     using Instruction = uint32_t;
 
+    struct InstructionMetadata {
+        PomeValue* globalCache = nullptr;
+        PomeClass* klassCache = nullptr;
+        PomeObject* objectCache = nullptr;
+        int indexCache = -1;
+    };
+
     // A chunk of bytecode
     class Chunk {
     public:
         std::vector<Instruction> code;
         std::vector<PomeValue> constants;
         std::vector<int> lines; // Debug info: Line number for each instruction
+        std::map<int, InstructionMetadata> metadata;
 
         void write(Instruction instruction, int line) {
             code.push_back(instruction);
@@ -34,8 +43,6 @@ namespace Pome {
 
         // --- Instruction Encoding Helpers ---
         // Op: 6 bits | A: 8 bits | C: 9 bits | B: 9 bits
-        // B and C are swapped in standard Lua layout vs ABC order, usually it's Op A C B in bits to align B/C? 
-        // Actually Lua 5.1 is:  Op(6) A(8) C(9) B(9)  (LSB ... MSB)
         
         static constexpr int SIZE_OP = 6;
         static constexpr int SIZE_A = 8;

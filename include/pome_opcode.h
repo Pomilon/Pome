@@ -63,7 +63,22 @@ namespace Pome {
         THROW,      // Added for error handling
         CATCH,      // Retrieve pending exception
         ASYNC,      // Create a task from a function
-        AWAIT       // Suspend and wait for a task
+        AWAIT,      // Suspend and wait for a task
+
+        // --- Specialized Opcodes (PEP 659 style) ---
+        ADD_NN,     // Specialized ADD for Number + Number
+        SUB_NN,
+        MUL_NN,
+        DIV_NN,
+        MOD_NN,
+        LT_NN,
+        LE_NN,
+        GETGLOBAL_CACHE,
+        GETTABLE_CACHE,
+        SETTABLE_CACHE,
+        GETFIELD_CACHE,
+        SETFIELD_CACHE,
+        CACHE       // Placeholder for specialization data
     };
 
 }

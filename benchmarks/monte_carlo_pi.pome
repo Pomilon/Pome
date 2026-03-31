@@ -1,0 +1,35 @@
+import time;
+
+// Simple LCG random generator
+class Random {
+    fun init(seed) {
+        this.seed = seed;
+    }
+    fun next() {
+        this.seed = (this.seed * 1103515245 + 12345) % 2147483648;
+        return this.seed / 2147483648.0;
+    }
+}
+
+fun estimate_pi(n) {
+    var rng = Random(42);
+    var inside = 0;
+    for (var i = 0; i < n; i += 1) {
+        var x = rng.next();
+        var y = rng.next();
+        if (x*x + y*y <= 1.0) {
+            inside += 1;
+        }
+    }
+    return 4.0 * inside / n;
+}
+
+// N injected
+if (N == nil) var N = 100000;
+
+var start = time.clock();
+var pi = estimate_pi(N);
+var end = time.clock();
+
+print(pi);
+print("Time: " + (end - start) + "s");

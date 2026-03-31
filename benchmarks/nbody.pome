@@ -1,0 +1,62 @@
+import time;
+import math;
+
+class Body {
+    fun init(x, y, z, vx, vy, vz, mass) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.vx = vx;
+        this.vy = vy;
+        this.vz = vz;
+        this.mass = mass;
+    }
+}
+
+fun advance(bodies, dt) {
+    for (var i = 0; i < len(bodies); i += 1) {
+        var b = bodies[i];
+        for (var j = i + 1; j < len(bodies); j += 1) {
+            var b2 = bodies[j];
+            var dx = b.x - b2.x;
+            var dy = b.y - b2.y;
+            var dz = b.z - b2.z;
+            var distance = math.sqrt(dx*dx + dy*dy + dz*dz);
+            var mag = dt / (distance * distance * distance);
+            
+            b.vx -= dx * b2.mass * mag;
+            b.vy -= dy * b2.mass * mag;
+            b.vz -= dz * b2.mass * mag;
+            
+            b2.vx += dx * b.mass * mag;
+            b2.vy += dy * b.mass * mag;
+            b2.vz += dz * b.mass * mag;
+        }
+    }
+    
+    for (var i = 0; i < len(bodies); i += 1) {
+        var b = bodies[i];
+        b.x += dt * b.vx;
+        b.y += dt * b.vy;
+        b.z += dt * b.vz;
+    }
+}
+
+// N injected
+if (N == nil) var N = 1000;
+
+var bodies = [
+    Body(0, 0, 0, 0, 0, 0, 1000), // Sun
+    Body(10, 0, 0, 0, 1, 0, 1),   // Planet 1
+    Body(0, 20, 0, -1, 0, 0, 0.5), // Planet 2
+    Body(30, 30, 0, 0.5, -0.5, 0, 0.1) // Planet 3
+];
+
+var start = time.clock();
+for (var i = 0; i < N; i += 1) {
+    advance(bodies, 0.01);
+}
+var end = time.clock();
+
+print(N);
+print("Time: " + (end - start) + "s");

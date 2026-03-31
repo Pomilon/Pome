@@ -20,4 +20,5 @@ while (i < N) {
     i = i + 1;
 }
 var end = time.clock();
-print("Time: " + (end - start) + "s. Sum: " + sum);
+print(sum);
+print("Time: " + (end - start) + "s");

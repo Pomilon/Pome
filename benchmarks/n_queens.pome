@@ -1,0 +1,34 @@
+import time;
+
+fun solve_queens(n, row, cols, diag1, diag2) {
+    if (row == n) return 1;
+    
+    var count = 0;
+    for (var col = 0; col < n; col += 1) {
+        var d1 = row + col;
+        var d2 = row - col + n;
+        
+        if (cols[col] == nil and diag1[d1] == nil and diag2[d2] == nil) {
+            cols[col] = true;
+            diag1[d1] = true;
+            diag2[d2] = true;
+            
+            count += solve_queens(n, row + 1, cols, diag1, diag2);
+            
+            cols[col] = nil;
+            diag1[d1] = nil;
+            diag2[d2] = nil;
+        }
+    }
+    return count;
+}
+
+// N injected
+if (N == nil) var N = 10;
+
+var start = time.clock();
+var solutions = solve_queens(N, 0, {}, {}, {});
+var end = time.clock();
+
+print(solutions);
+print("Time: " + (end - start) + "s");

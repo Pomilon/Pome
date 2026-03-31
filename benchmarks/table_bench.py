@@ -10,4 +10,5 @@ total = 0
 for j in range(N):
     total += t["key" + str(j)]
 end = time.time()
-print(f"Time: {end - start:.4f}s. Sum: {total}")
+print(total)
+print(f"Time: {end - start:.4f}s")

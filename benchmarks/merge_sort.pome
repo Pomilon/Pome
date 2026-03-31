@@ -1,0 +1,58 @@
+import time;
+
+fun merge(left, right) {
+    var result = [];
+    var i = 0;
+    var j = 0;
+    
+    while (i < len(left) and j < len(right)) {
+        if (left[i] <= right[j]) {
+            push(result, left[i]);
+            i += 1;
+        } else {
+            push(result, right[j]);
+            j += 1;
+        }
+    }
+    
+    // Add remaining
+    while (i < len(left)) {
+        push(result, left[i]);
+        i += 1;
+    }
+    while (j < len(right)) {
+        push(result, right[j]);
+        j += 1;
+    }
+    
+    return result;
+}
+
+fun mergeSort(arr) {
+    if (len(arr) <= 1) return arr;
+    
+    var mid = len(arr) / 2;
+    // floor mid
+    mid = mid - (mid % 1);
+    
+    var left = arr[0:mid];
+    var right = arr[mid:len(arr)];
+    
+    // RECURSION WAS MISSING HERE IN PREVIOUS VERSION
+    return merge(mergeSort(left), mergeSort(right));
+}
+
+// N injected
+if (N == nil) var N = 5000;
+
+var data = [];
+for (var i = 0; i < N; i += 1) {
+    push(data, N - i);
+}
+
+var start = time.clock();
+var sorted = mergeSort(data);
+var end = time.clock();
+
+print(len(sorted) + " " + sorted[0] + " " + sorted[len(sorted)-1]);
+print("Time: " + (end - start) + "s");

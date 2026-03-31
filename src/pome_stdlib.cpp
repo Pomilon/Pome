@@ -98,6 +98,33 @@ namespace Pome
         }
 
         /**
+         * --- System Module ---
+         */
+
+        PomeModule *createSystemModule(GarbageCollector &gc)
+        {
+            PomeModule *module = gc.allocate<PomeModule>();
+
+            registerNative(gc, module, "gc_count", [&gc](const std::vector<PomeValue> &args)
+            {
+                return PomeValue((double)gc.getGCCount());
+            });
+
+            registerNative(gc, module, "collect", [&gc](const std::vector<PomeValue> &args)
+            {
+                gc.collect(false); // Force Major GC
+                return PomeValue(std::monostate{});
+            });
+
+            registerNative(gc, module, "gc_info", [&gc](const std::vector<PomeValue> &args)
+            {
+                return PomeValue(gc.allocate<PomeString>(gc.getInfo()));
+            });
+
+            return module;
+        }
+
+        /**
          * --- IO Module ---
          */
 

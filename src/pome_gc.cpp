@@ -1,6 +1,7 @@
 #include "../include/pome_gc.h"
-#include "../include/pome_vm.h" // Added
+#include "../include/pome_vm.h"
 #include <iostream>
+#include <sstream>
 
 namespace Pome {
 
@@ -10,11 +11,10 @@ void GarbageCollector::setVM(VM* vm) {
     vm_ = vm;
 }
 
-void GarbageCollector::collect() {
-    // For now, always do Major GC (Full Collection)
-    // TODO: Implement Minor GC logic
-    mark();
-    sweep();
+void GarbageCollector::collect(bool minor) {
+    gcCount_++;
+    mark(minor);
+    sweep(minor);
 }
 
 void GarbageCollector::writeBarrier(PomeObject* parent, PomeValue& child) {
@@ -26,27 +26,25 @@ void GarbageCollector::writeBarrier(PomeObject* parent, PomeValue& child) {
     }
 }
 
-void GarbageCollector::mark() {
-    /**
-     * 2. Mark roots from VM
-     */
+void GarbageCollector::mark(bool minor) {
     if (vm_) {
         vm_->markRoots();
     }
     
-    /**
-     * 3. Mark temporary roots
-     */
     for (auto* obj : tempRoots_) {
         markObject(obj);
     }
     
-    // Remembered Set should also be roots for Minor GC, but for Major GC they are just part of the graph.
+    if (minor) {
+        for (auto* obj : rememberedSet_) {
+            markObject(obj);
+        }
+    }
     
-    traceReferences(); // Process stack iteratively
+    traceReferences(minor);
 }
 
-void GarbageCollector::traceReferences() {
+void GarbageCollector::traceReferences(bool minor) {
     while (!grayStack_.empty()) {
         PomeObject* object = grayStack_.back();
         grayStack_.pop_back();
@@ -56,78 +54,74 @@ void GarbageCollector::traceReferences() {
 
 void GarbageCollector::markObject(PomeObject* object) {
     if (object == nullptr || object->isMarked) return;
-    
     object->isMarked = true;
-    grayStack_.push_back(object); // Push to stack instead of recursing immediately
+    grayStack_.push_back(object);
 }
 
 void GarbageCollector::markValue(PomeValue& value) {
-    value.mark(*this); // Delegate to PomeValue::mark
+    value.mark(*this);
 }
 
 void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     for (auto& pair : table) {
-        pair.first.mark(*this); // Mark key
-        pair.second.mark(*this); // Mark value
+        pair.first.mark(*this);
+        pair.second.mark(*this);
     }
 }
 
-// Helper to sweep a specific list
 void sweepList(PomeObject** listHead, size_t& bytesAllocated) {
     PomeObject** object = listHead;
     while (*object) {
         if ((*object)->isMarked) {
             (*object)->isMarked = false;
-            // Promotion Logic: Simple age? Or just keep in same list?
-            // For true Generational, we move from Young to Old here if it survives.
-            // Let's implement promotion later.
             object = &(*object)->next;
         } else {
             PomeObject* unreached = *object;
             *object = unreached->next;
-            
             bytesAllocated -= unreached->gcSize;
             delete unreached;
         }
     }
 }
 
-void GarbageCollector::sweep() {
-    // 1. Sweep Old Gen first
-    sweepList(&oldObjects_, bytesAllocated_);
+void GarbageCollector::sweep(bool minor) {
+    if (!minor) {
+        sweepList(&oldObjects_, bytesAllocated_);
+    }
 
-    // 2. Sweep Young Gen and Promote survivors
+    // Reset youngBytesAllocated and rebuild it from survivors
+    youngBytesAllocated_ = 0;
     PomeObject** object = &youngObjects_;
     while (*object) {
         if ((*object)->isMarked) {
             (*object)->isMarked = false;
-            
-            // Promote to Old Gen
             PomeObject* survivor = *object;
-            *object = survivor->next; // Remove from Young
-            
-            survivor->generation = 1; // Mark as Old
-            survivor->next = oldObjects_; // Add to Old
-            oldObjects_ = survivor;
+
+            survivor->age++;
+            if (survivor->age >= 2) {
+                // Promote to old generation
+                *object = survivor->next;
+                survivor->generation = 1;
+                survivor->next = oldObjects_;
+                oldObjects_ = survivor;
+            } else {
+                // Keep in young generation
+                youngBytesAllocated_ += survivor->gcSize;
+                object = &survivor->next;
+            }
         } else {
             PomeObject* unreached = *object;
             *object = unreached->next;
-            
             bytesAllocated_ -= unreached->gcSize;
             delete unreached;
         }
     }
-    
-    // 3. Clear remembered set
+
     rememberedSet_.clear();
-    
-    /**
-     * Adjust nextGC limit
-     */
-    if (bytesAllocated_ > 0) {
+
+    if (!minor) {
         nextGC_ = bytesAllocated_ * 2;
-    } else {
-        nextGC_ = 1024 * 1024;
+        if (nextGC_ < 16 * 1024 * 1024) nextGC_ = 16 * 1024 * 1024;
     }
 }
 
@@ -147,8 +141,8 @@ void GarbageCollector::removeTemporaryRoot(PomeObject* obj) {
         }
     }
 }
-
-size_t GarbageCollector::getObjectCount() const {
+size_t GarbageCollector::getObjectCount() const
+{
     size_t count = 0;
     PomeObject* obj = youngObjects_;
     while (obj) { count++; obj = obj->next; }
@@ -156,5 +150,15 @@ size_t GarbageCollector::getObjectCount() const {
     while (obj) { count++; obj = obj->next; }
     return count;
 }
+
+std::string GarbageCollector::getInfo() const
+{
+    std::stringstream ss;
+    ss << "Total: " << (bytesAllocated_ / 1024) << "KB, ";
+    ss << "Young: " << (youngBytesAllocated_ / 1024) << "KB, ";
+    ss << "Count: " << gcCount_;
+    return ss.str();
+}
+
 
 } // namespace Pome

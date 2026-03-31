@@ -1,0 +1,51 @@
+import time;
+import math;
+
+fun compute_mean(data) {
+    var sum = 0;
+    for (var i = 0; i < len(data); i += 1) {
+        sum += data[i];
+    }
+    return sum / len(data);
+}
+
+fun compute_variance(data, mean) {
+    var sum = 0;
+    for (var i = 0; i < len(data); i += 1) {
+        var diff = data[i] - mean;
+        sum += diff * diff;
+    }
+    return sum / len(data);
+}
+
+fun bubble_sort_partial(data, n) {
+    // only sort first n elements to find median or just sort all if n is small
+    for (var i = 0; i < len(data); i += 1) {
+        for (var j = 0; j < len(data) - i - 1; j += 1) {
+            if (data[j] > data[j+1]) {
+                var t = data[j];
+                data[j] = data[j+1];
+                data[j+1] = t;
+            }
+        }
+    }
+}
+
+// N injected: data size
+if (N == nil) var N = 2000;
+
+var data = [];
+for (var i = 0; i < N; i += 1) {
+    push(data, (i * 1103515245 + 12345) % 1000);
+}
+
+var start = time.clock();
+var mean = compute_mean(data);
+var variance = compute_variance(data, mean);
+// Sort for median
+bubble_sort_partial(data, N);
+var median = data[N / 2 - (N / 2 % 1)];
+var end = time.clock();
+
+print(mean + " " + variance + " " + median);
+print("Time: " + (end - start) + "s");

@@ -138,6 +138,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (moduleName == "list") return Pome::PomeValue(Pome::StdLib::createListModule(gc));
                 if (moduleName == "threading") return Pome::PomeValue(Pome::StdLib::createThreadingModule(gc, loader));
                 if (moduleName == "ffi") return Pome::PomeValue(Pome::StdLib::createFFIModule(gc));
+                if (moduleName == "system") return Pome::PomeValue(Pome::StdLib::createSystemModule(gc));
 
                 Pome::ResolutionResult result = resolver.resolve(moduleName);
 
@@ -255,11 +256,18 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
             });
 
             vm.registerNative("gc_count", [&gc](const std::vector<Pome::PomeValue>& args) {
-                return Pome::PomeValue((double)gc.getObjectCount());
+                return Pome::PomeValue((double)gc.getGCCount());
             });
 
             vm.registerNative("gc_collect", [&gc](const std::vector<Pome::PomeValue>& args) {
-                gc.collect();
+                gc.collect(false); // Force Major GC
+                return Pome::PomeValue(std::monostate{});
+            });
+
+            vm.registerNative("gc_info", [&gc](const std::vector<Pome::PomeValue>& args) {
+                std::cout << "GC Info:" << std::endl;
+                std::cout << "  Total Cycles: " << gc.getGCCount() << std::endl;
+                std::cout << "  Objects:      " << gc.getObjectCount() << std::endl;
                 return Pome::PomeValue(std::monostate{});
             });
 

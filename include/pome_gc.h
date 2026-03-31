@@ -21,40 +21,59 @@ public:
 
     template<typename T, typename... Args>
     T* allocate(Args&&... args) {
-        T* object = nullptr; // Initialize to nullptr
+        // 1. Check if we need to collect BEFORE allocating
+        if (youngBytesAllocated_ > nextMinorGC_) {
+            collect(true); // Minor GC
+        }
+        if (bytesAllocated_ > nextGC_) {
+            collect(false); // Major GC
+        }
+
+        T* object = nullptr;
         try {
             object = new T(std::forward<Args>(args)...);
         } catch (const std::bad_alloc& e) {
-            std::cerr << "ERROR: std::bad_alloc caught during object allocation for type " << typeid(T).name() << ": " << e.what() << std::endl;
-            throw; // Re-throw out of memory exception
-        } catch (const std::exception& e) {
-            std::cerr << "ERROR: Exception caught during object allocation for type " << typeid(T).name() << ": " << e.what() << std::endl;
-            throw; // Re-throw other exceptions from constructor
-        }
-
-        if (object == nullptr) { // Defensive check, should theoretically not be hit with regular new
-            std::cerr << "ERROR: 'new' returned nullptr unexpectedly for object of type " << typeid(T).name() << std::endl;
-            return nullptr; 
+            // Force Major GC and try one last time
+            collect(false);
+            object = new T(std::forward<Args>(args)...);
         }
 
         object->gcSize = sizeof(T);
         object->generation = 0; // Young
+        object->age = 0;
         object->next = youngObjects_;
         youngObjects_ = object;
-        bytesAllocated_ += sizeof(T); 
         
-        addTemporaryRoot(object); // Protect from immediate collection during this allocate call
-        
-        if (bytesAllocated_ > nextGC_) {
-            collect();
+        if constexpr (std::is_same_v<T, PomeString>) {
+            object->gcSize += ((PomeString*)object)->extraSize();
+        } else if constexpr (std::is_same_v<T, PomeList>) {
+            object->gcSize += ((PomeList*)object)->extraSize();
         }
         
-        removeTemporaryRoot(object); // Remove temporary protection
+        bytesAllocated_ += object->gcSize; 
+        youngBytesAllocated_ += object->gcSize;
         
         return object;
     }
 
-    void collect();
+    /**
+     * Update an object's GC size when it grows (e.g. string or list append)
+     */
+    void updateSize(PomeObject* obj, size_t oldSize, size_t newSize) {
+        if (newSize > oldSize) {
+            size_t diff = newSize - oldSize;
+            bytesAllocated_ += diff;
+            if (obj->generation == 0) youngBytesAllocated_ += diff;
+            obj->gcSize = newSize;
+        } else if (oldSize > newSize) {
+            size_t diff = oldSize - newSize;
+            bytesAllocated_ -= diff;
+            if (obj->generation == 0) youngBytesAllocated_ -= diff;
+            obj->gcSize = newSize;
+        }
+    }
+
+    void collect(bool minor = false);
     void addTemporaryRoot(PomeObject* obj);
     void removeTemporaryRoot(PomeObject* obj);
 
@@ -68,6 +87,8 @@ public:
      * Debugging
      */
     size_t getObjectCount() const;
+    size_t getGCCount() const { return gcCount_; }
+    std::string getInfo() const;
     
     /**
      * Write Barrier: Call this when modifying an object's field/element
@@ -76,6 +97,7 @@ public:
 
 private:
     VM* vm_ = nullptr;
+    size_t gcCount_ = 0;
     
     PomeObject* youngObjects_ = nullptr;
     PomeObject* oldObjects_ = nullptr;
@@ -83,16 +105,18 @@ private:
     std::vector<PomeObject*> rememberedSet_; // Old objects pointing to Young objects
     
     size_t bytesAllocated_ = 0;
+    size_t youngBytesAllocated_ = 0;
     private:
-        size_t nextGC_ = 1024 * 1024; // Trigger GC every 1MB initially
+        size_t nextGC_ = 16 * 1024 * 1024; // Trigger Major GC when total heap > 16MB
+        size_t nextMinorGC_ = 4 * 1024 * 1024; // Trigger Minor GC when young gen > 4MB
 
     std::vector<PomeObject*> tempRoots_;
     std::vector<PomeObject*> grayStack_; // Iterative marking stack
 
-    void mark();
-    void traceReferences(); // Process gray stack
+    void mark(bool minor);
+    void traceReferences(bool minor); // Process gray stack
     void markTable(std::map<PomeValue, PomeValue>& table);
-    void sweep();
+    void sweep(bool minor);
 };
 
 class RootGuard {

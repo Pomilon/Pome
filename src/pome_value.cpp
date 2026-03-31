@@ -4,6 +4,8 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 namespace Pome
 {
@@ -95,6 +97,12 @@ namespace Pome
         return obj && obj->type() == ObjectType::MODULE;
     }
 
+    bool PomeValue::isTask() const
+    {
+        PomeObject* obj = asObject();
+        return obj && obj->type() == ObjectType::TASK;
+    }
+
     /**
      * Getters
      */
@@ -149,17 +157,21 @@ namespace Pome
             return asBool() ? "true" : "false";
         if (isNumber())
         {
-            std::stringstream ss;
             double d = asNumber();
+            if (std::isinf(d)) return d > 0 ? "inf" : "-inf";
+            if (std::isnan(d)) return "nan";
+            
             if (d == static_cast<long long>(d))
             {
-                ss << static_cast<long long>(d);
+                return std::to_string(static_cast<long long>(d));
             }
             else
             {
-                ss << d;
+                char buffer[64];
+                // Use .15g to get good precision without too much noise
+                snprintf(buffer, sizeof(buffer), "%.15g", d);
+                return std::string(buffer);
             }
-            return ss.str();
         }
         if (isObject())
         {
@@ -294,6 +306,7 @@ namespace Pome
      */
     // PomeClass has no children directly managed by GC other than methods map
     void PomeClass::markChildren(GarbageCollector& gc) {
+        if (superclass) gc.markObject(superclass);
         for (auto const& [name, func] : methods) {
             if (func) { // func is PomeFunction*
                 gc.markObject(func);
@@ -309,13 +322,24 @@ namespace Pome
         if (klass) {
             gc.markObject(klass);
         }
+        if (fieldsArray) {
+            for (uint8_t i = 0; i < fieldCount; ++i) {
+                fieldsArray[i].mark(gc);
+            }
+        }
         for (auto const& [name, val] : fields) {
-            val.mark(gc); // val is PomeValue
+            val.mark(gc);
         }
     }
 
     PomeValue PomeInstance::get(const std::string &name)
     {
+        if (fieldsArray) {
+            auto it = klass->fieldNames.find(name);
+            if (it != klass->fieldNames.end()) {
+                return fieldsArray[it->second];
+            }
+        }
         auto it = fields.find(name);
         if (it != fields.end())
         {
@@ -326,7 +350,22 @@ namespace Pome
 
     void PomeInstance::set(const std::string &name, PomeValue value)
     {
+        if (fieldsArray) {
+            auto it = klass->fieldNames.find(name);
+            if (it != klass->fieldNames.end()) {
+                fieldsArray[it->second] = value;
+                return;
+            }
+        }
         fields[name] = value;
+    }
+
+    void PomeInstance::setFieldsArray(GarbageCollector& gc, uint8_t count)
+    {
+        if (fieldsArray) delete[] fieldsArray;
+        fieldCount = count;
+        fieldsArray = new PomeValue[count];
+        gc.updateSize(this, gcSize, sizeof(PomeInstance) + count * sizeof(PomeValue));
     }
 
     /**
@@ -441,6 +480,15 @@ namespace Pome
                 PomeClass* newClass = (PomeClass*)PomeValue(oldInst->klass).deepCopy(targetGC, copiedObjects).asObject();
                 PomeInstance* newInst = targetGC.allocate<PomeInstance>(newClass);
                 copiedObjects[oldObj] = newInst;
+                
+                if (oldInst->fieldsArray) {
+                    newInst->fieldCount = oldInst->fieldCount;
+                    newInst->fieldsArray = new PomeValue[newInst->fieldCount];
+                    for (uint8_t i = 0; i < newInst->fieldCount; ++i) {
+                        newInst->fieldsArray[i] = oldInst->fieldsArray[i].deepCopy(targetGC, copiedObjects);
+                    }
+                }
+                
                 for (auto const& [name, val] : oldInst->fields) {
                     newInst->fields[name] = val.deepCopy(targetGC, copiedObjects);
                 }

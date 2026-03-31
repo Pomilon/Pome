@@ -110,6 +110,14 @@ namespace Pome {
             case OpCode::CATCH:     std::cout << "CATCH     R" << a << std::endl; break;
             case OpCode::ASYNC:     std::cout << "ASYNC     R" << a << " R" << b << std::endl; break;
             case OpCode::AWAIT:     std::cout << "AWAIT     R" << a << " R" << b << std::endl; break;
+
+            case OpCode::ADD_NN:    std::cout << "ADD_NN    R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::SUB_NN:    std::cout << "SUB_NN    R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::MUL_NN:    std::cout << "MUL_NN    R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::DIV_NN:    std::cout << "DIV_NN    R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::GETGLOBAL_CACHE: std::cout << "GETGLOBAL_CACHE R" << a << " K" << bx << " (" << chunk.constants[bx].toString() << ") (Cached)" << std::endl; break;
+            case OpCode::GETFIELD_CACHE:   std::cout << "GETFIELD_CACHE R" << a << " R" << b << " R" << c << " (Cached)" << std::endl; break;
+            case OpCode::CACHE:     std::cout << "CACHE     (Specialization data)" << std::endl; break;
             default:
                 std::cout << "Unknown opcode " << (int)op << " at offset " << offset << std::endl;
                 break;

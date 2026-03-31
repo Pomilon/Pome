@@ -1,0 +1,60 @@
+import time;
+import math;
+
+fun A(i, j) {
+    return 1.0 / ((i + j) * (i + j + 1) / 2 + i + 1);
+}
+
+fun multiplyAv(n, v, Av) {
+    for (var i = 0; i < n; i += 1) {
+        Av[i] = 0.0;
+        for (var j = 0; j < n; j += 1) {
+            Av[i] += A(i, j) * v[j];
+        }
+    }
+}
+
+fun multiplyAtv(n, v, Atv) {
+    for (var i = 0; i < n; i += 1) {
+        Atv[i] = 0.0;
+        for (var j = 0; j < n; j += 1) {
+            Atv[i] += A(j, i) * v[j];
+        }
+    }
+}
+
+fun multiplyAtAv(n, v, AtAv) {
+    var u = [];
+    for (var i = 0; i < n; i += 1) push(u, 0.0);
+    multiplyAv(n, v, u);
+    multiplyAtv(n, u, AtAv);
+}
+
+// N injected
+if (N == nil) var N = 100;
+
+var u = [];
+var v = [];
+for (var i = 0; i < N; i += 1) {
+    push(u, 1.0);
+    push(v, 0.0);
+}
+
+var start = time.clock();
+for (var i = 0; i < 10; i += 1) {
+    multiplyAtAv(N, u, v);
+    multiplyAtAv(N, v, u);
+}
+
+var vBv = 0.0;
+var vv = 0.0;
+for (var i = 0; i < N; i += 1) {
+    vBv += u[i] * v[i];
+    vv += v[i] * v[i];
+}
+
+var res = math.sqrt(vBv / vv);
+var end = time.clock();
+
+print(res);
+print("Time: " + (end - start) + "s");

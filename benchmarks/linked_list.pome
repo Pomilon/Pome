@@ -1,0 +1,51 @@
+import time;
+
+class Node {
+    fun init(val, next) {
+        this.val = val;
+        this.next = next;
+    }
+}
+
+fun create_list(n) {
+    var head = nil;
+    for (var i = 0; i < n; i += 1) {
+        head = Node(i, head);
+    }
+    return head;
+}
+
+fun sum_list(head) {
+    var sum = 0;
+    var curr = head;
+    while (curr != nil) {
+        sum += curr.val;
+        curr = curr.next;
+    }
+    return sum;
+}
+
+fun reverse_list(head) {
+    var prev = nil;
+    var curr = head;
+    while (curr != nil) {
+        var next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+}
+
+// N injected: list size
+if (N == nil) var N = 10000;
+
+var start = time.clock();
+var list = create_list(N);
+var s1 = sum_list(list);
+list = reverse_list(list);
+var s2 = sum_list(list);
+var end = time.clock();
+
+print(s1 + " " + s2);
+print("Time: " + (end - start) + "s");

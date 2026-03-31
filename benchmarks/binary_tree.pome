@@ -1,0 +1,55 @@
+import time;
+
+class Node {
+    fun init(item, left, right) {
+        this.item = item;
+        this.left = left;
+        this.right = right;
+    }
+
+    fun check() {
+        if (this.left == nil) return this.item;
+        return this.item + this.left.check() - this.right.check();
+    }
+}
+
+fun bottomUpTree(item, dep) {
+    if (dep > 0) {
+        return Node(item, bottomUpTree(2 * item - 1, dep - 1), bottomUpTree(2 * item, dep - 1));
+    }
+    return Node(item, nil, nil);
+}
+
+// N is injected
+if (N == nil) var N = 12;
+
+var minDepth = 4;
+var maxDepth = N;
+if (minDepth + 2 > maxDepth) maxDepth = minDepth + 2;
+var stretchDepth = maxDepth + 1;
+
+var start = time.clock();
+
+print(bottomUpTree(0, stretchDepth).check());
+
+var longLivedTree = bottomUpTree(0, maxDepth);
+
+for (var currentDepth = minDepth; currentDepth <= maxDepth; currentDepth += 2) {
+    var iterations = 1;
+    var d = maxDepth - currentDepth + minDepth;
+    for (var i = 0; i < d; i += 1) {
+        iterations = iterations * 2;
+    }
+    
+    var check = 0;
+    for (var i = 1; i <= iterations; i += 1) {
+        check += bottomUpTree(i, currentDepth).check();
+        check += bottomUpTree(-i, currentDepth).check();
+    }
+    print(iterations * 2 + " " + currentDepth + " " + check);
+}
+
+print(longLivedTree.check());
+
+var end = time.clock();
+print("Time: " + (end - start) + "s");

@@ -1,0 +1,49 @@
+import time;
+
+fun graph_bfs(nodes, edges, start_node) {
+    var visited = {};
+    var queue = [start_node];
+    visited[start_node] = true;
+    var count = 0;
+    
+    var head = 0;
+    while (head < len(queue)) {
+        var u = queue[head];
+        head += 1;
+        count += 1;
+        
+        var neighbors = edges[u];
+        if (neighbors != nil) {
+            for (var i = 0; i < len(neighbors); i += 1) {
+                var v = neighbors[i];
+                if (visited[v] == nil) {
+                    visited[v] = true;
+                    push(queue, v);
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// N injected: Number of nodes
+if (N == nil) var N = 10000;
+
+var nodes = [];
+var edges = {};
+for (var i = 0; i < N; i += 1) {
+    push(nodes, i);
+    var neighbors = [];
+    // Connect to next 3 nodes
+    for (var j = 1; j <= 3; j += 1) {
+        push(neighbors, (i + j) % N);
+    }
+    edges[i] = neighbors;
+}
+
+var start = time.clock();
+var c = graph_bfs(nodes, edges, 0);
+var end = time.clock();
+
+print(c);
+print("Time: " + (end - start) + "s");

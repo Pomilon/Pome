@@ -7,10 +7,9 @@ fun fib(n) {
 }
 
 // N is injected by the benchmark runner
-print("Calculating Fib(" + N + ")...");
 var start = time.clock();
 var res = fib(N);
 var elapsed = time.clock() - start;
 
-print("Fib(" + N + ") = " + res);
+print(res);
 print("Time: " + elapsed + "s");

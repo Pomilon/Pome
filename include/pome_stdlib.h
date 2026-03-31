@@ -15,6 +15,11 @@ namespace Pome
         PomeModule* createMathModule(GarbageCollector& gc);
 
         /**
+         * Creates and returns the 'system' module
+         */
+        PomeModule* createSystemModule(GarbageCollector& gc);
+
+        /**
          * Creates and returns the 'io' module
          */
         PomeModule* createIOModule(GarbageCollector& gc);
