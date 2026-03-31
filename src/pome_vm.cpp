@@ -359,7 +359,9 @@ namespace Pome {
                         R[a] = PomeValue();
                     }
                 } else {
-                    R[a] = PomeValue(); // Nil instead of runtime error
+                    SAVE_FRAME();
+                    runtimeError("Property access on non-object.");
+                    return PomeValue();
                 }
             }
             DISPATCH();
@@ -450,6 +452,10 @@ namespace Pome {
                 } else if (obj.isModule()) {
                     obj.asModule()->exports[key] = val;
                     gc.writeBarrier(obj.asObject(), val);
+                } else {
+                    SAVE_FRAME();
+                    runtimeError("Cannot set property on non-object.");
+                    return PomeValue();
                 }
             }
             DISPATCH();
