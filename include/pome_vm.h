@@ -32,6 +32,8 @@ namespace Pome {
         explicit VMException(PomeValue val) : value(val) {}
     };
 
+    using ModuleLoader = std::function<PomeValue(const std::string&)>;
+
     class VM {
     public:
         VM(GarbageCollector& gc, ModuleLoader loader);

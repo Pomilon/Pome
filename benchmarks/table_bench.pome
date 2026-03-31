@@ -1,0 +1,19 @@
+import time;
+
+// N is injected
+var t = {};
+var i = 0;
+var start = time.clock();
+while (i < N) {
+    t["key" + i] = i;
+    i = i + 1;
+}
+
+var sum = 0;
+var j = 0;
+while (j < N) {
+    sum = sum + t["key" + j];
+    j = j + 1;
+}
+var end = time.clock();
+print("Time: " + (end - start) + "s. Sum: " + sum);

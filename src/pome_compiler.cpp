@@ -87,6 +87,9 @@ namespace Pome {
         
         // R0 is reserved for the function itself
         innerCompiler.allocReg(); 
+        if (!func->name.empty()) {
+            innerCompiler.locals.push_back({func->name, 0, 0});
+        }
         
         // Bind parameters to registers R1, R2...
         for (const auto& param : func->parameters) {
@@ -98,7 +101,7 @@ namespace Pome {
             innerCompiler.resetFreeReg();
         }
         
-        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), stmt.getLine());
+        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 0, 0), stmt.getLine());
         
         func->upvalueCount = (uint16_t)innerCompiler.upvalues.size();
 
@@ -236,23 +239,25 @@ namespace Pome {
     void Compiler::visit(IdentifierExpr &expr) {
         int reg = resolveLocal(expr.getName());
         if (reg != -1) {
-            int dest = allocReg();
-            emit(Chunk::makeABC(OpCode::MOVE, dest, reg, 0), expr.getLine());
-            lastResultReg = dest;
-        } else if ((reg = resolveUpvalue(expr.getName())) != -1) {
+            lastResultReg = reg;
+            return;
+        }
+
+        if ((reg = resolveUpvalue(expr.getName())) != -1) {
             int dest = allocReg();
             emit(Chunk::makeABC(OpCode::GETUPVAL, dest, reg, 0), expr.getLine());
             lastResultReg = dest;
-        } else {
-            // Global Read
-            int dest = allocReg();
-            
-            PomeString* nameStr = gc.allocate<PomeString>(expr.getName());
-            int nameIdx = addConstant(PomeValue(nameStr));
-            
-            emit(Chunk::makeABx(OpCode::GETGLOBAL, dest, nameIdx), expr.getLine());
-            lastResultReg = dest;
+            return;
         }
+
+        // Global Read
+        int dest = allocReg();
+        
+        PomeString* nameStr = gc.allocate<PomeString>(expr.getName());
+        int nameIdx = addConstant(PomeValue(nameStr));
+        
+        emit(Chunk::makeABx(OpCode::GETGLOBAL, dest, nameIdx), expr.getLine());
+        lastResultReg = dest;
     }
 
     void Compiler::visit(BinaryExpr &expr) {
@@ -343,12 +348,12 @@ namespace Pome {
         }
 
         expr.getLeft()->accept(*this);
-        int leftReg = lastResultReg;
+        int leftReg = allocReg();
+        emit(Chunk::makeABC(OpCode::MOVE, leftReg, lastResultReg, 0), expr.getLine());
         
         expr.getRight()->accept(*this);
         int rightReg = lastResultReg;
         
-        freeRegs(2); 
         int resReg = allocReg();
         
         OpCode op = OpCode::ADD;
@@ -609,18 +614,21 @@ namespace Pome {
         }
 
         expr.getCallee()->accept(*this);
-        int calleeReg = lastResultReg;
+        int calleeValReg = lastResultReg;
+        
+        int callBase = allocReg(); // R(A)
+        emit(Chunk::makeABC(OpCode::MOVE, callBase, calleeValReg, 0), expr.getLine());
         
         int argCount = expr.getArgs().size();
         for (int i = 0; i < argCount; ++i) allocReg();
 
         for (int i = 0; i < argCount; ++i) {
             expr.getArgs()[i]->accept(*this);
-            emit(Chunk::makeABC(OpCode::MOVE, calleeReg + 1 + i, lastResultReg, 0), expr.getLine());
+            emit(Chunk::makeABC(OpCode::MOVE, callBase + 1 + i, lastResultReg, 0), expr.getLine());
         }
         
-        emit(Chunk::makeABC(OpCode::CALL, calleeReg, argCount + 1, 1), expr.getLine());
-        lastResultReg = calleeReg;
+        emit(Chunk::makeABC(OpCode::CALL, callBase, argCount + 1, 1), expr.getLine());
+        lastResultReg = callBase;
     }
 
     void Compiler::visit(ClassDeclStmt &stmt) {
@@ -654,7 +662,7 @@ namespace Pome {
                 // Constructors return 'this' (R1)
                 emit(Chunk::makeABC(OpCode::RETURN, 1, 2, 0), method->getLine());
             } else {
-                emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), method->getLine());
+                emit(Chunk::makeABC(OpCode::RETURN, 0, 0, 0), method->getLine());
             }
 
             currentChunk = prevChunk;
@@ -888,6 +896,9 @@ namespace Pome {
 
         // R0
         innerCompiler.allocReg(); 
+        if (!expr.getName().empty()) {
+            innerCompiler.locals.push_back({expr.getName(), 0, 0});
+        }
         for (const auto& param : func->parameters) {
             innerCompiler.locals.push_back({param, 0, innerCompiler.allocReg()});
         }
@@ -897,7 +908,7 @@ namespace Pome {
             innerCompiler.resetFreeReg();
         }
         
-        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 1, 0), expr.getLine());
+        innerCompiler.emit(Chunk::makeABC(OpCode::RETURN, 0, 0, 0), expr.getLine());
         
         func->upvalueCount = (uint16_t)innerCompiler.upvalues.size();
 
@@ -995,29 +1006,26 @@ namespace Pome {
         stmt.getIterable()->accept(*this);
         int iterableReg = lastResultReg;
         
-        // State: [base: iterable, base+1: lastKey, base+2: nextKey, base+3: nextValue]
-        int baseReg = allocReg(); 
-        emit(Chunk::makeABC(OpCode::MOVE, baseReg, iterableReg, 0), stmt.getLine());
+        // Iteration base starts here:
+        // R(base)   : Internal Iterator Object
+        // R(base+1) : Internal state (lastKey/index)
+        // R(base+2) : result1 (nextKey/value)
+        // R(base+3) : result2 (nextValue - if table)
+        int baseReg = allocReg();
+        emit(Chunk::makeABC(OpCode::GETITER, baseReg, iterableReg, 0), stmt.getLine());
         
-        int lastKeyReg = allocReg();
-        int nextKeyReg = allocReg();
-        int nextValueReg = allocReg();
-        int internalIterReg = allocReg(); // base+4
+        int lastKeyReg = allocReg(); // base + 1
+        emit(Chunk::makeABC(OpCode::LOADNIL, lastKeyReg, 0, 0), stmt.getLine());
         
-        // Nil all state registers: base+1, base+2, base+3, base+4
-        emit(Chunk::makeABC(OpCode::LOADNIL, lastKeyReg, 3, 0), stmt.getLine());
+        int res1Reg = allocReg(); // base + 2
+        int res2Reg = allocReg(); // base + 3
+        emit(Chunk::makeABC(OpCode::LOADNIL, res1Reg, 1, 0), stmt.getLine());
 
-        // GETITER internalIterReg, baseReg -> calls .iterator() if instance
-        emit(Chunk::makeABC(OpCode::GETITER, internalIterReg, baseReg, 0), stmt.getLine());
-        
-        int userKeyReg = allocReg();
-        locals.push_back({stmt.getVarName(), scopeDepth, userKeyReg});
-        
         int loopStart = currentChunk->code.size();
         loops.push_back({loopStart, {}, {}});
 
-        // TFORCALL baseReg + 2, baseReg -> fills nextKeyReg (base+2) and nextValueReg (base+3)
-        // A = destination register for RETURN, B = base register containing iterable
+        // TFORCALL A B C: Calls R(base) with R(base+1). Results in R(A) and R(A+1). 
+        // We use A = base + 2, B = base.
         emit(Chunk::makeABC(OpCode::TFORCALL, baseReg + 2, baseReg, 0), stmt.getLine());
         
         // If nextKeyReg is nil, exit loop.
@@ -1025,33 +1033,33 @@ namespace Pome {
         emit(Chunk::makeABC(OpCode::LOADNIL, nilReg, 0, 0), stmt.getLine());
         
         int isEndReg = allocReg();
-        emit(Chunk::makeABC(OpCode::EQ, isEndReg, nextKeyReg, nilReg), stmt.getLine());
+        emit(Chunk::makeABC(OpCode::EQ, isEndReg, baseReg + 2, nilReg), stmt.getLine());
         
         emit(Chunk::makeABC(OpCode::TEST, isEndReg, 0, 0), stmt.getLine()); 
         int jumpToEnd = emitJump(OpCode::JMP);
         
-        // Move nextKey to user variable
-        emit(Chunk::makeABC(OpCode::MOVE, userKeyReg, nextKeyReg, 0), stmt.getLine());
+        int userKeyReg = allocReg();
+        locals.push_back({stmt.getVarName(), scopeDepth, userKeyReg});
+        emit(Chunk::makeABC(OpCode::MOVE, userKeyReg, baseReg + 2, 0), stmt.getLine());
         
         for (const auto& s : stmt.getBody()) {
             s->accept(*this);
             resetFreeReg();
         }
         
-        // Target for continue: jump to TFORLOOP
-        int tforloopIndex = currentChunk->code.size();
+        // Target for continue
+        int continueTarget = currentChunk->code.size();
         for (int jump : loops.back().continueJumps) {
-            int offset = tforloopIndex - jump - 1;
+            int offset = continueTarget - jump - 1;
             currentChunk->code[jump] = Chunk::makeAsBx(OpCode::JMP, 0, offset);
         }
 
-        // TFORLOOP: lastKey = nextKey; jump back to loopStart (TFORCALL)
+        // Jump back to TFORCALL
         int offset = loopStart - (int)currentChunk->code.size() - 1;
-        emit(Chunk::makeAsBx(OpCode::TFORLOOP, baseReg, offset), stmt.getLine());
-        
+        emit(Chunk::makeAsBx(OpCode::JMP, 0, offset), stmt.getLine());
+
         patchJump(jumpToEnd);
         
-        // Target for break
         int breakTarget = currentChunk->code.size();
         for (int jump : loops.back().breakJumps) {
             int breakOffset = breakTarget - jump - 1;
@@ -1064,6 +1072,7 @@ namespace Pome {
         scopeDepth--;
         resetFreeReg();
         loops.pop_back();
+        freeRegs(7); // base, lastKey, res1, res2, nil, isEnd, userKey
     }
 
     void Compiler::visit(BreakStmt &stmt) {

@@ -168,6 +168,18 @@ namespace Pome
         return "unknown";
     }
 
+    size_t PomeValue::hash() const {
+        if (isNumber()) {
+            double d = asNumber();
+            if (d == 0.0) d = 0.0; // Normalize -0.0
+            return std::hash<double>{}(d);
+        }
+        if (isString()) {
+            return std::hash<std::string>{}(asString());
+        }
+        return std::hash<uint64_t>{}(value_);
+    }
+
     bool PomeValue::operator==(const PomeValue &other) const
     {
         // Fast path: exact bit equality

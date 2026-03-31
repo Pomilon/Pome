@@ -1,0 +1,23 @@
+import time;
+
+class Point {
+    fun init(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    fun dist() {
+        return (this.x * this.x + this.y * this.y);
+    }
+}
+
+// N is injected by the benchmark runner
+var i = 0;
+var sum = 0;
+var start = time.clock();
+while (i < N) {
+    var p = Point(i, i + 1);
+    sum = sum + p.dist();
+    i = i + 1;
+}
+var end = time.clock();
+print("Time: " + (end - start) + "s. Sum: " + sum);

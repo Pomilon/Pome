@@ -1,0 +1,8 @@
+fun run() {
+    var i = 0;
+    var limit = 100000000; // 100M
+    while (i < limit) {
+        i = i + 1;
+    }
+}
+run();

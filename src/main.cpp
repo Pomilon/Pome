@@ -195,6 +195,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
             auto chunk = compiler.compile(*program);
             
             Pome::VM vm(gc, loader);
+            gc.setVM(&vm);
             
             // Set global VM pointer for the loader
             extern Pome::VM* currentVM;
@@ -327,6 +328,27 @@ int main(int argc, char* argv[]) {
             return runFile(arg);
         }
     } 
+    else if (argc == 3) {
+        std::string arg1 = argv[1];
+        std::string arg2 = argv[2];
+        if (arg1 == "-d") {
+            std::ifstream file(arg2);
+            if (!file.is_open()) return 74;
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            Pome::GarbageCollector gc;
+            Pome::Lexer lexer(buffer.str());
+            Pome::Parser parser(lexer);
+            auto program = parser.parseProgram();
+            if (!program) return 65;
+            Pome::Compiler compiler(gc);
+            auto chunk = compiler.compile(*program);
+            Pome::disassembleChunk(*chunk, arg2.c_str());
+            return 0;
+        }
+        std::cerr << "Too many arguments." << std::endl;
+        return 64;
+    }
     else {
         std::cerr << "Too many arguments." << std::endl;
         return 64; 

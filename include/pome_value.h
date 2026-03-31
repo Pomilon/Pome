@@ -142,6 +142,8 @@ namespace Pome
 
         void mark(class GarbageCollector& gc) const;
 
+        size_t hash() const;
+
         // Public for internal use if needed, but try to use constructors
         uint64_t getRaw() const { return value_; }
 
@@ -358,5 +360,14 @@ namespace Pome
     };
 
 } // namespace Pome
+
+namespace std {
+    template<>
+    struct hash<Pome::PomeValue> {
+        size_t operator()(const Pome::PomeValue& v) const {
+            return v.hash();
+        }
+    };
+}
 
 #endif // POME_VALUE_H

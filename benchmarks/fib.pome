@@ -6,9 +6,9 @@ fun fib(n) {
     return fib(n - 1) + fib(n - 2);
 }
 
-var start = time.clock();
-var N = 20;
+// N is injected by the benchmark runner
 print("Calculating Fib(" + N + ")...");
+var start = time.clock();
 var res = fib(N);
 var elapsed = time.clock() - start;
 

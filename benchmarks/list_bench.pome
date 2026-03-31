@@ -1,0 +1,19 @@
+import time;
+import list;
+
+// N is injected
+var start = time.clock();
+var l = [];
+var i = 0;
+while (i < N) {
+    list.push(l, i);
+    i = i + 1;
+}
+
+var sum = 0;
+for (var x in l) {
+    sum = sum + x;
+}
+
+var elapsed = time.clock() - start;
+print("Time: " + elapsed + "s. Sum: " + sum);
