@@ -2,6 +2,7 @@
 #define POME_VALUE_H
 
 #include "pome_gc.h"
+#include <unordered_map>
 
 namespace Pome
 {
@@ -161,8 +162,8 @@ namespace Pome
     {
     public:
         std::string scriptPath;
-        std::map<PomeValue, PomeValue> exports;
-        std::map<PomeValue, PomeValue> variables;
+        std::unordered_map<PomeValue, PomeValue> exports;
+        std::unordered_map<PomeValue, PomeValue> variables;
 
         ObjectType type() const override { return ObjectType::MODULE; }
         std::string toString() const override { return "<module " + scriptPath + ">"; }

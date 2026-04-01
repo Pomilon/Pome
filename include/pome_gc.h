@@ -15,6 +15,7 @@ public:
 
     template<typename T, typename... Args>
     T* allocate(Args&&... args);
+    PomeList* allocateList();
 
     void updateSize(PomeObject* obj, size_t oldSize, size_t newSize);
 
@@ -39,11 +40,12 @@ private:
     PomeObject* oldObjects_ = nullptr;
     
     std::vector<PomeObject*> rememberedSet_; 
+    std::vector<PomeObject*> listPool_;
     
     size_t bytesAllocated_ = 0;
     size_t youngBytesAllocated_ = 0;
-    size_t nextGC_ = 16 * 1024 * 1024; 
-    size_t nextMinorGC_ = 4 * 1024 * 1024; 
+    size_t nextGC_ = 64 * 1024 * 1024; 
+    size_t nextMinorGC_ = 16 * 1024 * 1024; 
 
     std::vector<PomeObject*> tempRoots_;
     std::vector<PomeObject*> grayStack_; 

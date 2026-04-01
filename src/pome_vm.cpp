@@ -96,6 +96,10 @@ namespace Pome {
         }
         if (currentModule) gc.markObject(currentModule);
         pendingException.mark(gc);
+        
+        for (int i = 0; i < 256; ++i) {
+            if (charCache[i]) gc.markObject(charCache[i]);
+        }
 
         PomeUpvalue* upvalue = openUpvalues;
         while (upvalue != nullptr) {
@@ -310,6 +314,9 @@ namespace Pome {
                     auto it = currentModule->variables.find(key);
                     if (it != currentModule->variables.end()) {
                         R[a] = it->second;
+                        int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
+                        currentFrame->chunk->metadata[offset].globalCache = &it->second;
+                        *(ip - 1) = Chunk::makeABx(OpCode::GETGLOBAL_CACHE, a, (instruction >> 14) & 0x3FFFF);
                         DISPATCH();
                     }
                 }
@@ -379,6 +386,7 @@ namespace Pome {
                         auto& elements = obj.asList()->elements;
                         if (idx >= 0 && idx < (int)elements.size()) {
                             R[a] = elements[idx];
+                            *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE_CACHE, a, rb, rc);
                         } else {
                             R[a] = PomeValue();
                         }
@@ -390,9 +398,13 @@ namespace Pome {
                         int idx = (int)key.asNumber();
                         const std::string& s = obj.asString();
                         if (idx >= 0 && idx < (int)s.length()) {
-                            std::string charStr = "";
-                            charStr += s[idx];
-                            R[a] = PomeValue(gc.allocate<PomeString>(charStr));
+                            unsigned char ch = (unsigned char)s[idx];
+                            if (!charCache[ch]) {
+                                std::string charStr = "";
+                                charStr += (char)ch;
+                                charCache[ch] = gc.allocate<PomeString>(charStr);
+                            }
+                            R[a] = PomeValue(charCache[ch]);
                         } else {
                             R[a] = PomeValue();
                         }
@@ -406,6 +418,16 @@ namespace Pome {
                         PomeValue field = inst->get(k);
                         if (!field.isNil()) {
                             R[a] = field;
+                            if (inst->fieldsArray) {
+                                auto it = inst->klass->fieldNames.find(k);
+                                if (it != inst->klass->fieldNames.end()) {
+                                    int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
+                                    auto& meta = currentFrame->chunk->metadata[offset];
+                                    meta.klassCache = inst->klass;
+                                    meta.indexCache = it->second;
+                                    *(ip - 1) = Chunk::makeABC(OpCode::GETFIELD_CACHE, a, rb, rc);
+                                }
+                            }
                         } else {
                             PomeFunction* method = inst->klass->findMethod(k);
                             if (method) {
@@ -414,6 +436,7 @@ namespace Pome {
                                 auto& meta = currentFrame->chunk->metadata[offset];
                                 meta.klassCache = inst->klass;
                                 meta.objectCache = method;
+                                meta.indexCache = -1; // Ensure it's marked as method, not field
                                 *(ip - 1) = Chunk::makeABC(OpCode::GETFIELD_CACHE, a, rb, rc);
                             } else {
                                 R[a] = PomeValue();
@@ -451,8 +474,13 @@ namespace Pome {
                     int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                     auto& meta = currentFrame->chunk->metadata[offset];
                     if (inst->klass == meta.klassCache) {
-                        R[a] = PomeValue(meta.objectCache);
-                        DISPATCH();
+                        if (meta.indexCache != -1 && inst->fieldsArray) {
+                            R[a] = inst->fieldsArray[meta.indexCache];
+                            DISPATCH();
+                        } else if (meta.objectCache) {
+                            R[a] = PomeValue(meta.objectCache);
+                            DISPATCH();
+                        }
                     }
                 }
                 *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
@@ -464,21 +492,74 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::GETTABLE_CACHE:
             #endif
-            goto LABEL_GETTABLE;
+            {
+                int rb = (instruction >> 23) & 0x1FF;
+                int rc = (instruction >> 14) & 0x1FF;
+                PomeValue obj = R[rb];
+                PomeValue key = R[rc];
+                if (obj.isList() && key.isNumber()) {
+                    int idx = (int)key.asNumber();
+                    auto& elements = obj.asList()->elements;
+                    if (idx >= 0 && idx < (int)elements.size()) {
+                        R[a] = elements[idx];
+                        DISPATCH();
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE, a, rb, rc);
+                goto LABEL_GETTABLE;
+            }
         }
 
         LABEL_SETTABLE_CACHE: {
             #ifndef COMPUTED_GOTO
             case OpCode::SETTABLE_CACHE:
             #endif
-            goto LABEL_SETTABLE;
+            {
+                PomeValue obj = R[a];
+                PomeValue key = R[(instruction >> 23) & 0x1FF];
+                PomeValue val = R[(instruction >> 14) & 0x1FF];
+                if (obj.isList() && key.isNumber()) {
+                    int idx = (int)key.asNumber();
+                    auto& elements = obj.asList()->elements;
+                    if (idx >= 0 && idx < (int)elements.size()) {
+                        elements[idx] = val;
+                        gc.writeBarrier(obj.asObject(), val);
+                        DISPATCH();
+                    } else if (idx == (int)elements.size()) {
+                        size_t oldCap = elements.capacity();
+                        elements.push_back(val);
+                        if (elements.capacity() > oldCap) {
+                            gc.updateSize(obj.asObject(), sizeof(PomeList) + oldCap * sizeof(PomeValue), sizeof(PomeList) + elements.capacity() * sizeof(PomeValue));
+                        }
+                        gc.writeBarrier(obj.asObject(), val);
+                        DISPATCH();
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
+                goto LABEL_SETTABLE;
+            }
         }
 
         LABEL_SETFIELD_CACHE: {
             #ifndef COMPUTED_GOTO
             case OpCode::SETFIELD_CACHE:
             #endif
-            goto LABEL_SETTABLE;
+            {
+                PomeValue obj = R[a];
+                PomeValue val = R[(instruction >> 14) & 0x1FF];
+                if (obj.isInstance()) {
+                    PomeInstance* inst = obj.asInstance();
+                    int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
+                    auto& meta = currentFrame->chunk->metadata[offset];
+                    if (inst->klass == meta.klassCache && meta.indexCache != -1 && inst->fieldsArray) {
+                        inst->fieldsArray[meta.indexCache] = val;
+                        gc.writeBarrier(inst, val);
+                        DISPATCH();
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
+                goto LABEL_SETTABLE;
+            }
         }
 
         LABEL_CACHE: {
@@ -507,19 +588,32 @@ namespace Pome {
                         if (idx >= 0 && idx < (int)elements.size()) {
                             elements[idx] = val;
                             gc.writeBarrier(obj.asObject(), val);
+                            *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE_CACHE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
                         } else if (idx == (int)elements.size()) {
                             elements.push_back(val);
                             if (elements.capacity() > oldCap) {
                                 gc.updateSize(obj.asObject(), sizeof(PomeList) + oldCap * sizeof(PomeValue), sizeof(PomeList) + elements.capacity() * sizeof(PomeValue));
                             }
                             gc.writeBarrier(obj.asObject(), val);
+                            *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE_CACHE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
                         }
                     }
                 } else if (obj.isInstance()) {
                     if (key.isString()) {
                         std::string k = key.asString();
-                        obj.asInstance()->set(k, val);
-                        gc.writeBarrier(obj.asObject(), val);
+                        PomeInstance* inst = obj.asInstance();
+                        inst->set(k, val);
+                        gc.writeBarrier(inst, val);
+                        if (inst->fieldsArray) {
+                            auto it = inst->klass->fieldNames.find(k);
+                            if (it != inst->klass->fieldNames.end()) {
+                                int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
+                                auto& meta = currentFrame->chunk->metadata[offset];
+                                meta.klassCache = inst->klass;
+                                meta.indexCache = it->second;
+                                *(ip - 1) = Chunk::makeABC(OpCode::SETFIELD_CACHE, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
+                            }
+                        }
                     }
                 } else if (obj.isModule()) {
                     obj.asModule()->exports[key] = val;
@@ -539,7 +633,8 @@ namespace Pome {
             #endif
             {
                 int rb = (instruction >> 23) & 0x1FF;
-                PomeList* list = gc.allocate<PomeList>();
+                PomeList* list = gc.allocateList();
+                if (rb > 0) list->elements.reserve(rb);
                 R[a] = PomeValue(list); 
                 for (int i = 0; i < rb; ++i) list->elements.push_back(R[a + i]);
             }
@@ -741,7 +836,7 @@ namespace Pome {
                     *(ip - 1) = Chunk::makeABC(OpCode::MOD_NN, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
                     double a_val = v1.asNumber();
                     double b_val = v2.asNumber();
-                    R[a] = PomeValue(a_val - b_val * std::floor(a_val / b_val));
+                    R[a] = PomeValue(std::fmod(a_val, b_val));
                 } else {
                     SAVE_FRAME();
                     runtimeError("Arithmetic on non-number.");
@@ -761,7 +856,7 @@ namespace Pome {
                 if (v1.isNumber() && v2.isNumber()) {
                     double a_val = v1.asNumber();
                     double b_val = v2.asNumber();
-                    R[a] = PomeValue(a_val - b_val * std::floor(a_val / b_val));
+                    R[a] = PomeValue(std::fmod(a_val, b_val));
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::MOD, a, (instruction >> 23) & 0x1FF, (instruction >> 14) & 0x1FF);
                     goto LABEL_MOD;
@@ -853,7 +948,11 @@ namespace Pome {
             case OpCode::CONCAT:
             #endif
             {
-                PomeString* s = gc.allocate<PomeString>(R[(instruction >> 23) & 0x1FF].toString() + R[(instruction >> 14) & 0x1FF].toString());
+                PomeValue v1 = R[(instruction >> 23) & 0x1FF];
+                PomeValue v2 = R[(instruction >> 14) & 0x1FF];
+                const std::string& s1 = v1.isString() ? v1.asString() : v1.toString();
+                const std::string& s2 = v2.isString() ? v2.asString() : v2.toString();
+                PomeString* s = gc.allocate<PomeString>(s1 + s2);
                 R[a] = PomeValue(s);
             }
             DISPATCH();
@@ -979,6 +1078,35 @@ namespace Pome {
                 PomeValue callee = R[a];
                 int rb = (instruction >> 23) & 0x1FF;
                 if (callee.isNativeFunction()) {
+                    int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
+                    auto& meta = currentFrame->chunk->metadata[offset];
+                    
+                    if (meta.objectCache != callee.asObject()) {
+                        meta.objectCache = callee.asObject();
+                        const std::string& name = callee.asNativeFunction()->getName();
+                        if (name == "len") meta.indexCache = 1;
+                        else if (name == "push") meta.indexCache = 2;
+                        else meta.indexCache = 0;
+                    }
+                    
+                    if (meta.indexCache == 1 && rb == 2) {
+                        PomeValue v = R[a + 1];
+                        if (v.isList()) R[a] = PomeValue((double)v.asList()->elements.size());
+                        else if (v.isString()) R[a] = PomeValue((double)v.asString().length());
+                        else if (v.isTable()) R[a] = PomeValue((double)v.asTable()->elements.size());
+                        else R[a] = PomeValue();
+                        DISPATCH();
+                    } else if (meta.indexCache == 2 && rb == 3) {
+                        PomeValue lst = R[a + 1];
+                        PomeValue val = R[a + 2];
+                        if (lst.isList()) {
+                            lst.asList()->elements.push_back(val);
+                            gc.writeBarrier(lst.asObject(), val);
+                            R[a] = val;
+                            DISPATCH();
+                        }
+                    }
+                    
                     args.clear();
                     int startIdx = 1;
                     if (rb > 1 && R[a + 1].isModule()) startIdx = 2;
@@ -1379,10 +1507,13 @@ namespace Pome {
                     PomeList* list = obj.asList();
                     int s = startVal.isNil() ? 0 : (int)startVal.asNumber();
                     int e = endVal.isNil() ? (int)list->elements.size() : (int)endVal.asNumber();
-                    PomeList* res = gc.allocate<PomeList>();
+                    PomeList* res = gc.allocateList();
                     if (s < 0) s = 0;
                     if (e > (int)list->elements.size()) e = (int)list->elements.size();
-                    for (int i = s; i < e; ++i) res->elements.push_back(list->elements[i]);
+                    if (e > s) {
+                        res->elements.reserve(e - s);
+                        res->elements.assign(list->elements.begin() + s, list->elements.begin() + e);
+                    }
                     R[a] = PomeValue(res);
                 } else if (obj.isString()) {
                     const std::string& str = obj.asString();

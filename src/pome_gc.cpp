@@ -1,5 +1,6 @@
 #include "../include/pome_gc.h"
 #include "../include/pome_vm.h"
+#include "../include/pome_value.h"
 #include <iostream>
 #include <sstream>
 
@@ -9,6 +10,32 @@ GarbageCollector::GarbageCollector() {}
 
 void GarbageCollector::setVM(VM* vm) {
     vm_ = vm;
+}
+
+PomeList* GarbageCollector::allocateList() {
+    if (youngBytesAllocated_ > nextMinorGC_) collect(true);
+    if (bytesAllocated_ > nextGC_) collect(false);
+
+    PomeList* list = nullptr;
+    if (!listPool_.empty()) {
+        list = static_cast<PomeList*>(listPool_.back());
+        listPool_.pop_back();
+        list->gcSize = sizeof(PomeList) + list->elements.capacity() * sizeof(PomeValue);
+    } else {
+        list = new PomeList();
+        list->gcSize = sizeof(PomeList);
+    }
+
+    list->generation = 0;
+    list->age = 0;
+    list->isMarked = false;
+    list->next = youngObjects_;
+    youngObjects_ = list;
+
+    bytesAllocated_ += list->gcSize;
+    youngBytesAllocated_ += list->gcSize;
+
+    return list;
 }
 
 void GarbageCollector::updateSize(PomeObject* obj, size_t oldSize, size_t newSize) {
@@ -84,7 +111,7 @@ void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     }
 }
 
-void sweepList(PomeObject** listHead, size_t& bytesAllocated) {
+void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeObject*>& listPool) {
     PomeObject** object = listHead;
     while (*object) {
         if ((*object)->isMarked) {
@@ -94,14 +121,21 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated) {
             PomeObject* unreached = *object;
             *object = unreached->next;
             bytesAllocated -= unreached->gcSize;
-            delete unreached;
+            if (unreached->type() == ObjectType::LIST && listPool.size() < 10000) {
+                PomeList* lst = static_cast<PomeList*>(unreached);
+                lst->elements.clear();
+                if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
+                listPool.push_back(lst);
+            } else {
+                delete unreached;
+            }
         }
     }
 }
 
 void GarbageCollector::sweep(bool minor) {
     if (!minor) {
-        sweepList(&oldObjects_, bytesAllocated_);
+        sweepList(&oldObjects_, bytesAllocated_, listPool_);
     }
 
     // Reset youngBytesAllocated and rebuild it from survivors
@@ -128,7 +162,14 @@ void GarbageCollector::sweep(bool minor) {
             PomeObject* unreached = *object;
             *object = unreached->next;
             bytesAllocated_ -= unreached->gcSize;
-            delete unreached;
+            if (unreached->type() == ObjectType::LIST && listPool_.size() < 10000) {
+                PomeList* lst = static_cast<PomeList*>(unreached);
+                lst->elements.clear();
+                if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
+                listPool_.push_back(lst);
+            } else {
+                delete unreached;
+            }
         }
     }
 

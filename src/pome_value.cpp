@@ -172,7 +172,7 @@ namespace Pome
         }
         if (isList()) {
             PomeList* oldList = asList();
-            PomeList* newList = targetGC.allocate<PomeList>();
+            PomeList* newList = targetGC.allocateList();
             copiedObjects[obj] = newList;
             for (auto& val : oldList->elements) {
                 newList->elements.push_back(val.deepCopy(targetGC, copiedObjects));

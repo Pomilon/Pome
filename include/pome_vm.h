@@ -6,6 +6,7 @@
 #include "pome_gc.h" 
 #include <vector>
 #include <map> 
+#include <unordered_map>
 #include <functional>
 #include <deque>
 
@@ -60,11 +61,13 @@ namespace Pome {
         void throwException(PomeValue value);
         PomeUpvalue* captureUpvalue(PomeValue* local); // Added
         void closeUpvalues(PomeValue* last);           // Added
+        
+        PomeString* charCache[256] = {nullptr};
 
         GarbageCollector& gc; 
         ModuleLoader moduleLoader;
-        std::map<PomeValue, PomeValue> globals; 
-        std::map<std::string, PomeValue> moduleCache;
+        std::unordered_map<PomeValue, PomeValue> globals; 
+        std::unordered_map<std::string, PomeValue> moduleCache;
         PomeModule* currentModule = nullptr;
         
         std::vector<PomeValue> stack;
