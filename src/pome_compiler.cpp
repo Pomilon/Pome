@@ -311,13 +311,17 @@ namespace Pome {
         if (oper == "=") {
             // Assignment Expression
             if (auto ident = dynamic_cast<IdentifierExpr*>(expr.getLeft())) {
-                // Compile RHS
+                // Optimized LHS lookup for assignment
+                int localReg = resolveLocal(ident->getName());
+                
+                // Evaluate RHS first
                 expr.getRight()->accept(*this);
                 int valReg = lastResultReg;
                 
-                int localReg = resolveLocal(ident->getName());
                 if (localReg != -1) {
-                    emit(Chunk::makeABC(OpCode::MOVE, localReg, valReg, 0), expr.getLine());
+                    if (valReg != localReg) {
+                        emit(Chunk::makeABC(OpCode::MOVE, localReg, valReg, 0), expr.getLine());
+                    }
                     lastResultReg = localReg;
                 } else if ((localReg = resolveUpvalue(ident->getName())) != -1) {
                     emit(Chunk::makeABC(OpCode::SETUPVAL, valReg, localReg, 0), expr.getLine());
@@ -372,12 +376,35 @@ namespace Pome {
             return;
         }
 
-        expr.getLeft()->accept(*this);
-        int leftReg = allocReg();
-        emit(Chunk::makeABC(OpCode::MOVE, leftReg, lastResultReg, 0), expr.getLine());
-        
-        expr.getRight()->accept(*this);
-        int rightReg = lastResultReg;
+        // Optimization: Check if left/right are local variables
+        int leftReg = -1;
+        bool leftIsLocal = false;
+        if (auto ident = dynamic_cast<IdentifierExpr*>(expr.getLeft())) {
+            leftReg = resolveLocal(ident->getName());
+            if (leftReg != -1) leftIsLocal = true;
+        }
+
+        if (leftIsLocal) {
+            // No MOVE needed, use its register directly.
+        } else {
+            expr.getLeft()->accept(*this);
+            leftReg = lastResultReg;
+            // The left operand's result is at leftReg (>= previous freeReg).
+        }
+
+        int rightReg = -1;
+        bool rightIsLocal = false;
+        if (auto ident = dynamic_cast<IdentifierExpr*>(expr.getRight())) {
+            rightReg = resolveLocal(ident->getName());
+            if (rightReg != -1) rightIsLocal = true;
+        }
+
+        if (rightIsLocal) {
+            // No MOVE needed.
+        } else {
+            expr.getRight()->accept(*this);
+            rightReg = lastResultReg;
+        }
         
         OpCode op = OpCode::ADD;
         bool invert = false;
@@ -452,11 +479,23 @@ namespace Pome {
 
         // 2. Resolve target and potentially fetch current value for compound ops
         if (auto ident = dynamic_cast<IdentifierExpr*>(stmt.getTarget())) {
-            // Evaluate RHS first for identifiers
-            stmt.getValue()->accept(*this);
-            int rhsReg = lastResultReg;
-
             int localReg = resolveLocal(ident->getName());
+            
+            // Optimization: If RHS is a local, avoid calling accept() which would MOVE it to a temporary.
+            int rhsReg = -1;
+            bool rhsIsLocal = false;
+            if (op.empty()) {
+                if (auto rhsIdent = dynamic_cast<IdentifierExpr*>(stmt.getValue())) {
+                    rhsReg = resolveLocal(rhsIdent->getName());
+                    if (rhsReg != -1) rhsIsLocal = true;
+                }
+            }
+
+            if (!rhsIsLocal) {
+                stmt.getValue()->accept(*this);
+                rhsReg = lastResultReg;
+            }
+
             int upvalIdx = -1;
 
             if (localReg != -1) {
@@ -470,7 +509,9 @@ namespace Pome {
                     else if (op == "%") opcode = OpCode::MOD;
                     emit(Chunk::makeABC(opcode, localReg, localReg, rhsReg), stmt.getLine());
                 } else {
-                    emit(Chunk::makeABC(OpCode::MOVE, localReg, rhsReg, 0), stmt.getLine());
+                    if (localReg != rhsReg) {
+                        emit(Chunk::makeABC(OpCode::MOVE, localReg, rhsReg, 0), stmt.getLine());
+                    }
                 }
                 lastResultReg = localReg;
             } else if ((upvalIdx = resolveUpvalue(ident->getName())) != -1) {

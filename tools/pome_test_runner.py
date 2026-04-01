@@ -43,21 +43,6 @@ def main():
         print(f"Error: Binary {POME_BIN} not found.")
         sys.exit(1)
 
-    tests = [os.path.join(TEST_DIR, f) for f in os.listdir(TEST_DIR) if f.endswith(".pome")]
-    tests.sort()
-
-    print(f"Pome Test Runner")
-    print("=" * 40)
-
-    results = [run_test(t) for f in tests] # Wait, typo in loop variable
-    # Fixed below
-    
-if __name__ == "__main__":
-    # Corrected main logic
-    if not os.path.exists(POME_BIN):
-        print(f"Error: Binary {POME_BIN} not found.")
-        sys.exit(1)
-
     passed = 0
     all_tests = []
     for root, dirs, files in os.walk("test"):
@@ -66,6 +51,9 @@ if __name__ == "__main__":
                 all_tests.append(os.path.join(root, f))
     
     all_tests.sort()
+
+    print(f"Pome Test Runner")
+    print("=" * 40)
 
     for t in all_tests:
         if run_test(t):
@@ -78,3 +66,6 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
