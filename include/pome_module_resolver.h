@@ -31,8 +31,10 @@ public:
 
     /**
      * Resolve a logical module path (e.g., "my_pkg.sub_mod") to a physical file.
+     * @param logicalPath The path to resolve (e.g. "os", "my_pkg.sub")
+     * @param originPath The absolute directory path of the module making the request (for relative imports)
      */
-    ResolutionResult resolve(const std::string& logicalPath);
+    ResolutionResult resolve(const std::string& logicalPath, const std::string& originPath = "");
 
     /**
      * Get the platform-specific shared library extension.

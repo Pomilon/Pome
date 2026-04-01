@@ -1362,12 +1362,17 @@ namespace Pome
 
         std::string moduleName; // Declare moduleName here
 
+        if (currentToken_.type == TokenType::DOT) {
+            moduleName += ".";
+            nextToken();
+        }
+
         if (currentToken_.type != TokenType::IDENTIFIER)
         {
             error("Expected module name after 'import', got " + currentToken_.debugString());
             return nullptr;
         }
-        moduleName = currentToken_.value;
+        moduleName += currentToken_.value;
         nextToken(); // Consume IDENTIFIER
 
         while (currentToken_.type == TokenType::DOT || currentToken_.type == TokenType::DIVIDE)
@@ -1410,12 +1415,17 @@ namespace Pome
         nextToken(); // Consume FROM
 
         std::string moduleName;
+        if (currentToken_.type == TokenType::DOT) {
+            moduleName += ".";
+            nextToken();
+        }
+
         if (currentToken_.type != TokenType::IDENTIFIER)
         {
             error("Expected module name after 'from', got " + currentToken_.debugString());
             return nullptr;
         }
-        moduleName = currentToken_.value;
+        moduleName += currentToken_.value;
         nextToken(); // Consume module name
 
         while (currentToken_.type == TokenType::DOT || currentToken_.type == TokenType::DIVIDE)

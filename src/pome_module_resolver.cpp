@@ -141,8 +141,16 @@ namespace Pome {
         return false;
     }
 
-    ResolutionResult ModuleResolver::resolve(const std::string& logicalPath) {
+    ResolutionResult ModuleResolver::resolve(const std::string& logicalPath, const std::string& originPath) {
         std::string pathSegment = logicalPath;
+        bool isRelative = false;
+
+        // Support relative imports: import .sub_mod
+        if (!logicalPath.empty() && logicalPath[0] == '.') {
+            isRelative = true;
+            pathSegment = logicalPath.substr(1);
+        }
+
         size_t pos = 0;
         while ((pos = pathSegment.find('.', pos)) != std::string::npos) {
             pathSegment.replace(pos, 1, "/");
@@ -155,7 +163,13 @@ namespace Pome {
             moduleName = logicalPath.substr(lastDot + 1);
         }
 
-        for (const auto& basePath : searchPaths_) {
+        std::vector<std::string> effectiveSearchPaths = searchPaths_;
+        if (isRelative && !originPath.empty()) {
+            // Only search in the origin directory for relative imports
+            effectiveSearchPaths = { originPath.back() == '/' ? originPath : originPath + "/" };
+        }
+
+        for (const auto& basePath : effectiveSearchPaths) {
             // Option 1: Try as a single file Pome module (e.g., basePath/my_pkg.pome)
             std::string pomeFileCandidate = basePath + pathSegment + ".pome";
             if (FileUtils::exists(pomeFileCandidate)) {

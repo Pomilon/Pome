@@ -37,6 +37,40 @@ namespace Pome {
         throw VMException{value};
     }
 
+    PomeUpvalue* VM::captureUpvalue(PomeValue* local) {
+        PomeUpvalue* prevUpvalue = nullptr;
+        PomeUpvalue* upvalue = openUpvalues;
+
+        while (upvalue != nullptr && upvalue->location > local) {
+            prevUpvalue = upvalue;
+            upvalue = upvalue->next;
+        }
+
+        if (upvalue != nullptr && upvalue->location == local) {
+            return upvalue;
+        }
+
+        PomeUpvalue* createdUpvalue = gc.allocate<PomeUpvalue>(local);
+        createdUpvalue->next = upvalue;
+
+        if (prevUpvalue == nullptr) {
+            openUpvalues = createdUpvalue;
+        } else {
+            prevUpvalue->next = createdUpvalue;
+        }
+
+        return createdUpvalue;
+    }
+
+    void VM::closeUpvalues(PomeValue* last) {
+        while (openUpvalues != nullptr && openUpvalues->location >= last) {
+            PomeUpvalue* upvalue = openUpvalues;
+            upvalue->closedValue = *upvalue->location;
+            upvalue->location = &upvalue->closedValue;
+            openUpvalues = upvalue->next;
+        }
+    }
+
     void VM::registerNative(const std::string& name, NativeFn fn) {
         PomeString* nameStr = gc.allocate<PomeString>(name);
         RootGuard guard(gc, nameStr);
@@ -63,6 +97,12 @@ namespace Pome {
         if (currentModule) gc.markObject(currentModule);
         pendingException.mark(gc);
 
+        PomeUpvalue* upvalue = openUpvalues;
+        while (upvalue != nullptr) {
+            gc.markObject(upvalue);
+            upvalue = upvalue->next;
+        }
+
         for (int i = 0; i < frameCount; ++i) {
             if (frames[i].function) gc.markObject(frames[i].function);
             if (frames[i].task) gc.markObject(frames[i].task);
@@ -86,14 +126,14 @@ namespace Pome {
         if (!chunk) return PomeValue();
         hasError = false;
         
-        PomeModule* savedModule = currentModule;
-        if (module) currentModule = module;
-        
+        RootGuard moduleGuard(gc, module);
+
         int initialFrameIdx = frameCount;
         if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
         
         CallFrame* frame = &frames[frameCount++];
         frame->function = nullptr;
+        frame->module = module ? module : currentModule;
         frame->chunk = chunk;
         frame->ip = chunk->code.data();
         frame->base = stackTop;
@@ -114,6 +154,7 @@ namespace Pome {
             constants = currentFrame->chunk->constants.data(); \
             ip = currentFrame->ip; \
             frameBase = currentFrame->base; \
+            currentModule = currentFrame->module; \
             if (frameBase + 512 >= (int)stack.size()) { \
                 stack.resize(stack.size() * 2); \
             } \
@@ -176,7 +217,17 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::LOADK:
             #endif
-            R[a] = constants[(instruction >> 14) & 0x3FFFF];
+            {
+                PomeValue val = constants[(instruction >> 14) & 0x3FFFF];
+                if (val.isClass()) {
+                    val.asClass()->module = currentModule;
+                    // Also set module for all its methods
+                    for (auto const& [name, method] : val.asClass()->methods) {
+                        method->module = currentModule;
+                    }
+                }
+                R[a] = val;
+            }
             DISPATCH();
         }
 
@@ -204,7 +255,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::GETUPVAL:
             #endif
-            R[a] = currentFrame->function->upvalues[(instruction >> 23) & 0x1FF];
+            R[a] = *currentFrame->function->upvalues[(instruction >> 23) & 0x1FF]->location;
             DISPATCH();
         }
 
@@ -212,30 +263,32 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::SETUPVAL:
             #endif
-            currentFrame->function->upvalues[(instruction >> 23) & 0x1FF] = R[a];
+            *currentFrame->function->upvalues[(instruction >> 23) & 0x1FF]->location = R[a];
             DISPATCH();
         }
 
-        LABEL_CLOSURE: {
+            LABEL_CLOSURE: {
             #ifndef COMPUTED_GOTO
             case OpCode::CLOSURE:
             #endif
             {
-                PomeFunction* proto = constants[(instruction >> 14) & 0x3FFFF].asPomeFunction();
+                PomeValue protoVal = constants[(instruction >> 14) & 0x3FFFF];
+                PomeFunction* proto = protoVal.asPomeFunction();
                 PomeFunction* closure = gc.allocate<PomeFunction>();
                 closure->name = proto->name;
                 closure->parameters = proto->parameters;
                 closure->chunk = proto->chunk;
                 closure->upvalueCount = proto->upvalueCount;
                 closure->isAsync = proto->isAsync;
-                closure->module = currentModule;
+                closure->module = currentModule; 
+                proto->module = currentModule; // Ensure proto also has a module for direct calls if any
 
                 for (int i = 0; i < closure->upvalueCount; ++i) {
                     Instruction uvMeta = *ip++;
                     OpCode op = static_cast<OpCode>(uvMeta & 0x3F);
                     int uvIdx = (uvMeta >> 23) & 0x1FF;
                     if (op == OpCode::MOVE) {
-                        closure->upvalues.push_back(R[uvIdx]);
+                        closure->upvalues.push_back(captureUpvalue(&R[uvIdx]));
                     } else {
                         closure->upvalues.push_back(currentFrame->function->upvalues[uvIdx]);
                     }
@@ -251,6 +304,17 @@ namespace Pome {
             #endif
             {
                 PomeValue key = constants[(instruction >> 14) & 0x3FFFF];
+                
+                // 1. Check current module's variables
+                if (currentModule) {
+                    auto it = currentModule->variables.find(key);
+                    if (it != currentModule->variables.end()) {
+                        R[a] = it->second;
+                        DISPATCH();
+                    }
+                }
+
+                // 2. Check VM globals
                 auto it = globals.find(key);
                 if (it != globals.end()) {
                     R[a] = it->second;
@@ -285,7 +349,15 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::SETGLOBAL:
             #endif
-            globals[constants[(instruction >> 14) & 0x3FFFF]] = R[a];
+            {
+                PomeValue key = constants[(instruction >> 14) & 0x3FFFF];
+                if (currentModule) {
+                    currentModule->variables[key] = R[a];
+                    gc.writeBarrier(currentModule, R[a]);
+                } else {
+                    globals[key] = R[a];
+                }
+            }
             DISPATCH();
         }
 
@@ -732,6 +804,7 @@ namespace Pome {
                         if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
                         CallFrame* nextFrame = &frames[frameCount++];
                         nextFrame->function = method;
+                        nextFrame->module = method->module;
                         nextFrame->chunk = method->chunk.get();
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 2;
@@ -937,6 +1010,7 @@ namespace Pome {
                     if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
                     CallFrame* nextFrame = &frames[frameCount++];
                     nextFrame->function = func;
+                    nextFrame->module = func->module;
                     nextFrame->chunk = func->chunk.get();
                     nextFrame->ip = func->chunk->code.data();
                     nextFrame->base = nextFrameBase;
@@ -967,6 +1041,7 @@ namespace Pome {
                         if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
                         CallFrame* nextFrame = &frames[frameCount++];
                         nextFrame->function = init;
+                        nextFrame->module = init->module;
                         nextFrame->chunk = init->chunk.get();
                         nextFrame->ip = init->chunk->code.data();
                         nextFrame->base = frameBase + a;
@@ -1001,13 +1076,16 @@ namespace Pome {
                 PomeValue result = ((instruction >> 23) & 0x1FF) == 0 ? PomeValue() : R[a];
                 int dest = currentFrame->destReg;
                 PomeTask* currentTask = currentFrame->task;
+                
+                // Close upvalues for the frame's stack slots
+                closeUpvalues(&stack[frameBase]);
+
                 if (currentTask) {
                     currentTask->result = result;
                     currentTask->isCompleted = true;
                 }
                 frameCount--;
                 if (frameCount == initialFrameIdx) {
-                    currentModule = savedModule;
                     return result;
                 }
                 REFRESH_FRAME();
@@ -1069,6 +1147,7 @@ namespace Pome {
                     if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
                     CallFrame* nextFrame = &frames[frameCount++];
                     nextFrame->function = nextMethod;
+                    nextFrame->module = nextMethod->module;
                     nextFrame->chunk = nextMethod->chunk.get();
                     nextFrame->ip = nextMethod->chunk->code.data();
                     nextFrame->base = frameBase + a + 2; 
@@ -1117,23 +1196,56 @@ namespace Pome {
             case OpCode::IMPORT:
             #endif
             {
-                std::string name = constants[(instruction >> 14) & 0x3FFFF].asString();
-                auto it = moduleCache.find(name);
+                std::string fullName = constants[(instruction >> 14) & 0x3FFFF].asString();
+                auto it = moduleCache.find(fullName);
+                PomeValue mod;
                 if (it != moduleCache.end()) {
-                    R[a] = it->second;
+                    mod = it->second;
                 } else if (moduleLoader) {
                     SAVE_FRAME();
-                    PomeValue mod = moduleLoader(name);
+                    mod = moduleLoader(fullName);
                     REFRESH_FRAME();
                     if (mod.isNil()) {
-                        runtimeError("Cannot find module '" + name + "'");
+                        runtimeError("Cannot find module '" + fullName + "'");
                         return PomeValue();
                     }
-                    if (mod.isModule()) moduleCache[name] = mod;
-                    R[a] = mod;
+                    if (mod.isModule()) moduleCache[fullName] = mod;
                 } else {
-                    R[a] = PomeValue();
+                    mod = PomeValue();
                 }
+
+                // Hierarchical support: still build the tables in moduleCache for others to use
+                size_t firstDot = fullName.find('.');
+                if (firstDot != std::string::npos && firstDot > 0) {
+                    std::string topName = fullName.substr(0, firstDot);
+                    PomeTable* rootTable;
+                    auto itRoot = moduleCache.find(topName);
+                    if (itRoot != moduleCache.end() && itRoot->second.isTable()) {
+                        rootTable = itRoot->second.asTable();
+                    } else {
+                        rootTable = gc.allocate<PomeTable>();
+                        moduleCache[topName] = PomeValue(rootTable);
+                    }
+                    
+                    PomeTable* currentTable = rootTable;
+                    std::string remaining = fullName.substr(firstDot + 1);
+                    size_t dotPos;
+                    while ((dotPos = remaining.find('.')) != std::string::npos) {
+                        std::string part = remaining.substr(0, dotPos);
+                        PomeValue partVal(gc.allocate<PomeString>(part));
+                        if (currentTable->elements.find(partVal) == currentTable->elements.end() || !currentTable->elements[partVal].isTable()) {
+                            PomeTable* nextTable = gc.allocate<PomeTable>();
+                            currentTable->elements[partVal] = PomeValue(nextTable);
+                            currentTable = nextTable;
+                        } else {
+                            currentTable = currentTable->elements[partVal].asTable();
+                        }
+                        remaining = remaining.substr(dotPos + 1);
+                    }
+                    currentTable->elements[PomeValue(gc.allocate<PomeString>(remaining))] = mod;
+                }
+
+                R[a] = mod; 
             }
             DISPATCH();
         }
@@ -1213,6 +1325,7 @@ namespace Pome {
                         if (frameCount >= (int)frames.size()) frames.resize(frames.size() * 2);
                         CallFrame* nextFrame = &frames[frameCount++];
                         nextFrame->function = iterMethod;
+                        nextFrame->module = iterMethod->module;
                         nextFrame->chunk = iterMethod->chunk.get();
                         nextFrame->ip = iterMethod->chunk->code.data();
                         nextFrame->base = frameBase + a + 2;

@@ -140,7 +140,22 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (moduleName == "ffi") return Pome::PomeValue(Pome::StdLib::createFFIModule(gc));
                 if (moduleName == "system") return Pome::PomeValue(Pome::StdLib::createSystemModule(gc));
 
-                Pome::ResolutionResult result = resolver.resolve(moduleName);
+                extern Pome::VM* currentVM;
+                std::string originPath = "";
+                if (currentVM) {
+                    Pome::PomeModule* currentMod = currentVM->getCurrentModule();
+                    if (currentMod && !currentMod->scriptPath.empty()) {
+                        std::string fullPath = currentMod->scriptPath;
+                        size_t lastSlash = fullPath.find_last_of("/\\");
+                        if (lastSlash != std::string::npos) {
+                            originPath = fullPath.substr(0, lastSlash);
+                        } else {
+                            originPath = ".";
+                        }
+                    }
+                }
+
+                Pome::ResolutionResult result = resolver.resolve(moduleName, originPath);
 
                 if (result.type == Pome::ModuleType::NOT_FOUND) {
                     return Pome::PomeValue(); // Return nil if not found

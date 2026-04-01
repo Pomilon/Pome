@@ -1,165 +1,10 @@
 #ifndef POME_VALUE_H
 #define POME_VALUE_H
 
-#include <string>
-#include <vector>
-#include <map>
-#include <functional>
-#include <memory>
-#include <iostream>
-#include <cstring> // For memcpy
-#include <cstdint> // For uint64_t, uintptr_t
-#include <variant> // For std::monostate
-#include <memory> // Added
-#include <thread> // Added for concurrency
-#include <atomic> // Added
-#include "pome_ast.h" // For Program definition
+#include "pome_gc.h"
 
 namespace Pome
 {
-    class Chunk; // Forward declaration
-    class Statement;
-
-    /**
-     * Object types
-     */
-    enum class ObjectType
-    {
-        STRING,
-        FUNCTION,
-        NATIVE_FUNCTION,
-        LIST,
-        TABLE,
-        CLASS,
-        INSTANCE,
-        MODULE,
-        THREAD,
-        TASK,
-        NATIVE_OBJECT // Added for native wrapper objects
-    };
-
-    /**
-     * Base Object Class
-     */
-    class PomeObject
-    {
-    public:
-        virtual ~PomeObject() = default;
-        virtual ObjectType type() const = 0;
-        virtual std::string toString() const = 0;
-
-        /**
-         * GC support
-         */
-        bool isMarked = false;
-        uint8_t generation = 0; // 0 = Young, 1 = Old
-        uint8_t age = 0;        // Age in young generation
-        size_t gcSize = 0;      // Size of the object for GC accounting
-        PomeObject* next = nullptr;
-
-        virtual void markChildren(class GarbageCollector& gc) {} // Mark children for GC
-    };
-
-    class PomeString;
-    class PomeFunction;
-    class NativeFunction;
-    class PomeList;
-    class PomeTable;
-    class PomeClass;
-    class PomeInstance;
-    class PomeModule;
-
-    class PomeValue
-    {
-    public:
-        PomeValue(); // Nil
-        explicit PomeValue(std::monostate); // Nil
-        explicit PomeValue(bool b);
-        explicit PomeValue(double d);
-        explicit PomeValue(PomeObject* obj);
-
-        /**
-         * Type checking
-         */
-        inline bool isNil() const { return value_ == (QNAN | TAG_NIL); }
-        inline bool isBool() const { return value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE); }
-        inline bool isNumber() const { return (value_ & QNAN) != QNAN; }
-        inline bool isObject() const { return (value_ & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT); }
-        
-        // These require full definitions or PomeObject type visibility if checking obj->type()
-        // PomeObject is forward declared but defined above, so it's visible.
-        bool isString() const;
-        bool isFunction() const;
-        bool isPomeFunction() const;
-        bool isNativeFunction() const;
-        bool isList() const;
-        bool isTable() const;
-        bool isClass() const;
-        bool isInstance() const;
-        bool isModule() const;
-        bool isTask() const;
-
-        /**
-         * Getters
-         */
-        inline bool asBool() const {
-            if (value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE))
-                return value_ == (QNAN | TAG_TRUE);
-            if (isNumber())
-                return asNumber() != 0.0;
-            if (value_ == (QNAN | TAG_NIL))
-                return false;
-            return true; // Objects are true
-        }
-
-        inline double asNumber() const {
-            double d;
-            std::memcpy(&d, &value_, sizeof(double));
-            return d;
-        }
-        
-        inline PomeObject* asObject() const {
-            if (isObject()) {
-                return (PomeObject*)(uintptr_t)(value_ & ~(SIGN_BIT | QNAN));
-            }
-            return nullptr;
-        }
-
-        const std::string &asString() const;
-        PomeFunction* asPomeFunction() const;
-        NativeFunction* asNativeFunction() const;
-        PomeList* asList() const;
-        PomeTable* asTable() const;
-        PomeClass* asClass() const;
-        PomeInstance* asInstance() const;
-        PomeModule* asModule() const;
-
-        std::string toString() const;
-        bool operator==(const PomeValue &other) const;
-        bool operator!=(const PomeValue &other) const { return !(*this == other); }
-        bool operator<(const PomeValue &other) const;
-
-        PomeValue deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const;
-
-        void mark(class GarbageCollector& gc) const;
-
-        size_t hash() const;
-
-        // Public for internal use if needed, but try to use constructors
-        uint64_t getRaw() const { return value_; }
-
-    private:
-        uint64_t value_;
-
-        // NaN Boxing Constants
-        static constexpr uint64_t QNAN = 0x7ffc000000000000;
-        static constexpr uint64_t SIGN_BIT = 0x8000000000000000;
-
-        static constexpr uint64_t TAG_NIL = 1;
-        static constexpr uint64_t TAG_FALSE = 2;
-        static constexpr uint64_t TAG_TRUE = 3;
-    };
-
     /**
      * String Object
      */
@@ -177,32 +22,46 @@ namespace Pome
     };
 
     /**
+     * Upvalue Object
+     */
+    class PomeUpvalue : public PomeObject
+    {
+    public:
+        PomeValue* location; 
+        PomeValue closedValue;
+        PomeUpvalue* next = nullptr; 
+
+        explicit PomeUpvalue(PomeValue* slot) : location(slot), closedValue() {}
+        ObjectType type() const override { return ObjectType::UPVALUE; }
+        std::string toString() const override { return "<upvalue>"; }
+        void markChildren(GarbageCollector& gc) override;
+    };
+
+    /**
      * User-defined Function Object
      */
     class PomeFunction : public PomeObject
     {
     public:
-        PomeFunction(); // Need constructor to init chunk
+        PomeFunction(); 
         std::string name;
         std::vector<std::string> parameters;
-        const std::vector<std::unique_ptr<Statement>> *body = nullptr; // AST body
-        std::shared_ptr<Chunk> chunk; // Compiled bytecode
-        std::vector<PomeValue> upvalues; // Captured variables
-        uint16_t upvalueCount = 0; // Number of upvalues to capture
-        bool isAsync = false; // Whether this is an async function
-        class PomeModule* module = nullptr; // Parent module
-        class PomeClass* klass = nullptr; // Parent class (if method)
+        const std::vector<std::unique_ptr<Statement>> *body = nullptr; 
+        std::shared_ptr<Chunk> chunk; 
+        std::vector<PomeUpvalue*> upvalues; 
+        uint16_t upvalueCount = 0; 
+        bool isAsync = false; 
+        class PomeModule* module = nullptr; 
+        class PomeClass* klass = nullptr; 
 
         ObjectType type() const override { return ObjectType::FUNCTION; }
         std::string toString() const override { return "<fn " + name + ">"; }
-        void markChildren(class GarbageCollector& gc) override;
+        void markChildren(GarbageCollector& gc) override;
     };
 
     /**
      * Built-in Function Object
      */
-    using NativeFn = std::function<PomeValue(const std::vector<PomeValue> &)>;
-
     class NativeFunction : public PomeObject
     {
     public:
@@ -232,7 +91,7 @@ namespace Pome
         explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;
-        void markChildren(class GarbageCollector& gc) override;
+        void markChildren(GarbageCollector& gc) override;
         size_t extraSize() const { return elements.capacity() * sizeof(PomeValue); }
     };
 
@@ -248,7 +107,7 @@ namespace Pome
         explicit PomeTable(std::map<PomeValue, PomeValue> elems) : elements(std::move(elems)) {}
         ObjectType type() const override { return ObjectType::TABLE; }
         std::string toString() const override;
-        void markChildren(class GarbageCollector& gc) override;
+        void markChildren(GarbageCollector& gc) override;
     };
 
     /**
@@ -260,25 +119,15 @@ namespace Pome
         std::string name;
         class PomeClass* superclass = nullptr;
         std::map<std::string, PomeFunction*> methods;
-        std::map<std::string, uint8_t> fieldNames; // name -> index in fieldsArray
+        std::map<std::string, uint8_t> fieldNames; 
+        class PomeModule* module = nullptr; 
 
         explicit PomeClass(std::string name) : name(std::move(name)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
         std::string toString() const override { return "<class " + name + ">"; }
-        void markChildren(class GarbageCollector& gc) override;
+        void markChildren(GarbageCollector& gc) override;
 
-        PomeFunction* findMethod(const std::string &name)
-        {
-            auto it = methods.find(name);
-            if (it != methods.end())
-            {
-                return it->second;
-            }
-            if (superclass) {
-                return superclass->findMethod(name);
-            }
-            return nullptr;
-        }
+        PomeFunction* findMethod(const std::string &name);
     };
 
     /**
@@ -290,7 +139,6 @@ namespace Pome
         PomeClass* klass;
         std::map<std::string, PomeValue> fields;
         
-        // Fast fields
         PomeValue* fieldsArray = nullptr;
         uint8_t fieldCount = 0;
 
@@ -298,11 +146,12 @@ namespace Pome
         ~PomeInstance() override { if (fieldsArray) delete[] fieldsArray; }
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
-        void markChildren(class GarbageCollector& gc) override;
 
-        PomeValue get(const std::string &name);
         void set(const std::string &name, PomeValue value);
-        void setFieldsArray(class GarbageCollector& gc, uint8_t count);
+        PomeValue get(const std::string &name);
+        void markChildren(GarbageCollector& gc) override;
+
+        void setFieldsArray(GarbageCollector& gc, uint8_t count);
     };
 
     /**
@@ -313,71 +162,66 @@ namespace Pome
     public:
         std::string scriptPath;
         std::map<PomeValue, PomeValue> exports;
-        std::shared_ptr<Program> ast_root; // Keeps the AST alive for script-based modules
+        std::map<PomeValue, PomeValue> variables;
 
-        explicit PomeModule() {}
         ObjectType type() const override { return ObjectType::MODULE; }
-        std::string toString() const override { return "<module>"; }
-        void markChildren(GarbageCollector& gc) override; // Declaration only
+        std::string toString() const override { return "<module " + scriptPath + ">"; }
+        void markChildren(GarbageCollector& gc) override;
     };
 
-    using ModuleLoader = std::function<PomeValue(const std::string&)>;
-
     /**
-     * Thread Object (Isolate)
+     * Thread Object
      */
     class PomeThread : public PomeObject
     {
     public:
         std::thread handle;
-        std::atomic<bool> isFinished{false};
         PomeValue result;
-        std::unique_ptr<class GarbageCollector> isolateGC; // Keep the child heap alive until joined
+        std::atomic<bool> isFinished{false};
+        std::unique_ptr<GarbageCollector> isolateGC;
 
-        explicit PomeThread();
-        ~PomeThread() override;
         ObjectType type() const override { return ObjectType::THREAD; }
         std::string toString() const override { return "<thread>"; }
         void markChildren(GarbageCollector& gc) override;
     };
 
+    /**
+     * Task Object
+     */
     class PomeTask : public PomeObject
     {
     public:
-        PomeFunction* function = nullptr;
-        std::vector<PomeValue> args; // Arguments for the task
-        bool isCompleted = false;
+        PomeFunction* function;
+        std::vector<PomeValue> args;
         PomeValue result;
+        bool isCompleted = false;
 
-        explicit PomeTask(PomeFunction* fn) : function(fn) {}
+        explicit PomeTask(PomeFunction* f) : function(f) {}
         ObjectType type() const override { return ObjectType::TASK; }
         std::string toString() const override { return "<task>"; }
         void markChildren(GarbageCollector& gc) override;
     };
 
     /**
-     * Native Wrapper Object
+     * Native wrapper object
      */
-    class PomeNativeObject : public PomeObject
-    {
+    class PomeNativeObject : public PomeObject {
     public:
-        void* ptr = nullptr;
-        std::string tag; // Optional description/type name
+        void* ptr;
+        std::string typeName;
+        std::function<void(void*)> deleter;
 
-        explicit PomeNativeObject(void* p, std::string t = "native") : ptr(p), tag(std::move(t)) {}
+        PomeNativeObject(void* p, std::string t, std::function<void(void*)> d = nullptr)
+            : ptr(p), typeName(std::move(t)), deleter(std::move(d)) {}
+        
+        ~PomeNativeObject() override { if (deleter && ptr) deleter(ptr); }
+
         ObjectType type() const override { return ObjectType::NATIVE_OBJECT; }
-        std::string toString() const override { return "<native " + tag + " at " + std::to_string((uintptr_t)ptr) + ">"; }
+        std::string toString() const override { return "<native " + typeName + ">"; }
     };
 
 } // namespace Pome
 
-namespace std {
-    template<>
-    struct hash<Pome::PomeValue> {
-        size_t operator()(const Pome::PomeValue& v) const {
-            return v.hash();
-        }
-    };
-}
+#include "pome_gc_impl.h"
 
 #endif // POME_VALUE_H

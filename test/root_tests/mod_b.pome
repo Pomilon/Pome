@@ -1,0 +1,2 @@
+fun f() { return "B"; }
+export fun getB() { return f(); }

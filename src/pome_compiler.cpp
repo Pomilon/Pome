@@ -1084,10 +1084,18 @@ namespace Pome {
         
         std::string fullPath = stmt.getModuleName();
         std::string baseName = fullPath;
-        size_t lastDot = fullPath.find_last_of('.');
-        if (lastDot != std::string::npos) {
-            baseName = fullPath.substr(lastDot + 1);
+        
+        // Handle relative imports by skipping the leading dot if any
+        if (!fullPath.empty() && fullPath[0] == '.') {
+            baseName = fullPath.substr(1);
         }
+
+        // Get the leaf name
+        size_t lastDot = baseName.find_last_of('.');
+        if (lastDot != std::string::npos) {
+            baseName = baseName.substr(lastDot + 1);
+        }
+
         locals.push_back({baseName, scopeDepth, reg});
         lastResultReg = reg;
     }

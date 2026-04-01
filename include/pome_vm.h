@@ -13,6 +13,7 @@ namespace Pome {
 
     struct CallFrame {
         PomeFunction* function;
+        PomeModule* module;
         Chunk* chunk;
         uint32_t* ip;
         int base; // Index in stack where R0 for this frame starts
@@ -34,6 +35,8 @@ namespace Pome {
 
     using ModuleLoader = std::function<PomeValue(const std::string&)>;
 
+    class PomeUpvalue; // Added
+
     class VM {
     public:
         VM(GarbageCollector& gc, ModuleLoader loader);
@@ -47,6 +50,7 @@ namespace Pome {
         GarbageCollector& getGC() { return gc; }
         PomeValue loadNativeModule(const std::string& libraryPath, PomeModule* moduleObj);
         void runEventLoop();
+        PomeModule* getCurrentModule() const { return currentModule; }
 
         bool hasError = false;
         PomeValue pendingException;
@@ -54,6 +58,8 @@ namespace Pome {
     private:
         void runtimeError(const std::string& message);
         void throwException(PomeValue value);
+        PomeUpvalue* captureUpvalue(PomeValue* local); // Added
+        void closeUpvalues(PomeValue* last);           // Added
 
         GarbageCollector& gc; 
         ModuleLoader moduleLoader;
@@ -64,6 +70,9 @@ namespace Pome {
         std::vector<PomeValue> stack;
         int stackTop = 0;
         
+        // Upvalues
+        PomeUpvalue* openUpvalues = nullptr; // Added
+
         // Call Stack
         std::vector<CallFrame> frames;
         int frameCount;

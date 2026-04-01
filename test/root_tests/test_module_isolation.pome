@@ -1,0 +1,13 @@
+import mod_a;
+import mod_b;
+
+print("Mod A result:", mod_a.getA()); // Expect A
+print("Mod B result:", mod_b.getB()); // Expect B
+
+// f() is not in mod_a or mod_b exports, only in their variables.
+// And main module doesn't have f() in its variables either.
+if (f == nil) {
+    print("f is nil in main");
+} else {
+    print("f is NOT nil in main: ", f());
+}

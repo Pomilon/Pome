@@ -11,7 +11,22 @@ void GarbageCollector::setVM(VM* vm) {
     vm_ = vm;
 }
 
+void GarbageCollector::updateSize(PomeObject* obj, size_t oldSize, size_t newSize) {
+    if (newSize > oldSize) {
+        size_t diff = newSize - oldSize;
+        bytesAllocated_ += diff;
+        if (obj->generation == 0) youngBytesAllocated_ += diff;
+        obj->gcSize = newSize;
+    } else if (oldSize > newSize) {
+        size_t diff = oldSize - newSize;
+        bytesAllocated_ -= diff;
+        if (obj->generation == 0) youngBytesAllocated_ -= diff;
+        obj->gcSize = newSize;
+    }
+}
+
 void GarbageCollector::collect(bool minor) {
+
     gcCount_++;
     mark(minor);
     sweep(minor);

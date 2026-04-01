@@ -1,47 +1,20 @@
-#include "../include/pome_value.h"
-#include "../include/pome_gc.h"
-#include "../include/pome_chunk.h" // Added
+#include "pome_value.h"
+#include "pome_chunk.h"
+#include "pome_gc.h"
 #include <iostream>
-#include <sstream>
-#include <algorithm>
 #include <cmath>
-#include <cstdio>
+#include <sstream>
+#include <iomanip>
 
 namespace Pome
 {
-    PomeFunction::PomeFunction() : chunk(std::make_shared<Chunk>()) {}
-
-    /**
-     * PomeValue implementation
-     */
-    PomeValue NativeFunction::call(const std::vector<PomeValue> &args)
-    {
-        return function_(args);
-    }
-
-    /**
-     * --- PomeValue Implementation (NaN Boxing) ---
-     */
+    // --- PomeValue ---
 
     PomeValue::PomeValue() : value_(QNAN | TAG_NIL) {}
     PomeValue::PomeValue(std::monostate) : value_(QNAN | TAG_NIL) {}
-    
-    PomeValue::PomeValue(bool b) : value_(b ? (QNAN | TAG_TRUE) : (QNAN | TAG_FALSE)) {}
-    
-    PomeValue::PomeValue(double d)
-    {
-        std::memcpy(&value_, &d, sizeof(double));
-    }
-    
-    PomeValue::PomeValue(PomeObject* obj)
-    {
-        value_ = (uint64_t)(uintptr_t)obj | QNAN | SIGN_BIT;
-    }
-
-    /**
-     * Type checking
-     */
-    // isNil, isBool, isNumber, isObject moved to header
+    PomeValue::PomeValue(bool b) : value_(QNAN | (b ? TAG_TRUE : TAG_FALSE)) {}
+    PomeValue::PomeValue(double d) { std::memcpy(&value_, &d, sizeof(double)); }
+    PomeValue::PomeValue(PomeObject* obj) : value_(SIGN_BIT | QNAN | (uint64_t)(uintptr_t)obj) {}
 
     bool PomeValue::isString() const
     {
@@ -103,15 +76,9 @@ namespace Pome
         return obj && obj->type() == ObjectType::TASK;
     }
 
-    /**
-     * Getters
-     */
-    // asBool, asNumber, asObject moved to header
-
     const std::string &PomeValue::asString() const
     {
-        auto obj = static_cast<PomeString*>(asObject());
-        return obj->getValue();
+        return static_cast<PomeString*>(asObject())->getValue();
     }
 
     PomeFunction* PomeValue::asPomeFunction() const
@@ -151,149 +118,129 @@ namespace Pome
 
     std::string PomeValue::toString() const
     {
-        if (isNil())
-            return "nil";
-        if (isBool())
-            return asBool() ? "true" : "false";
-        if (isNumber())
-        {
-            double d = asNumber();
-            if (std::isinf(d)) return d > 0 ? "inf" : "-inf";
-            if (std::isnan(d)) return "nan";
-            
-            if (d == static_cast<long long>(d))
-            {
-                return std::to_string(static_cast<long long>(d));
-            }
-            else
-            {
-                char buffer[64];
-                // Use .15g to get good precision without too much noise
-                snprintf(buffer, sizeof(buffer), "%.15g", d);
-                return std::string(buffer);
-            }
-        }
-        if (isObject())
-        {
-            return asObject()->toString();
-        }
-        return "unknown";
-    }
-
-    size_t PomeValue::hash() const {
+        if (isNil()) return "nil";
+        if (isBool()) return asBool() ? "true" : "false";
         if (isNumber()) {
             double d = asNumber();
-            if (d == 0.0) d = 0.0; // Normalize -0.0
-            return std::hash<double>{}(d);
+            if (std::floor(d) == d) return std::to_string((long long)d);
+            std::ostringstream oss;
+            oss << std::setprecision(14) << d;
+            return oss.str();
         }
-        if (isString()) {
-            return std::hash<std::string>{}(asString());
-        }
-        return std::hash<uint64_t>{}(value_);
+        if (isObject()) return asObject()->toString();
+        return "???";
     }
 
     bool PomeValue::operator==(const PomeValue &other) const
     {
-        // Fast path: exact bit equality
         if (value_ == other.value_) return true;
-
-        // If both are numbers, use double equality (handles -0.0 == 0.0)
-        if (isNumber() && other.isNumber()) {
-            return asNumber() == other.asNumber();
+        if (isString() && other.isString()) {
+            return asString() == other.asString();
         }
-
-        // If types are different, they are not equal (unless we want loose equality, but Pome seems strict-ish)
-        // Check if one is object and other is not
-        if (isObject() != other.isObject()) return false;
-        
-        // If both are objects (and bits were different), we might need deep comparison for Strings
-        if (isObject()) {
-            PomeObject* obj1 = asObject();
-            PomeObject* obj2 = other.asObject();
-            
-            if (obj1->type() == ObjectType::STRING && obj2->type() == ObjectType::STRING)
-            {
-                return static_cast<PomeString*>(obj1)->getValue() ==
-                       static_cast<PomeString*>(obj2)->getValue();
-            }
-        }
-
         return false;
+    }
+
+    int typeOrder(const PomeValue& v) {
+        if (v.isNil()) return 0;
+        if (v.isBool()) return 1;
+        if (v.isNumber()) return 2;
+        if (v.isString()) return 3;
+        return 4;
     }
 
     bool PomeValue::operator<(const PomeValue &other) const
     {
-        // 1. Same types
         if (isNumber() && other.isNumber()) return asNumber() < other.asNumber();
         if (isString() && other.isString()) return asString() < other.asString();
-        if (isBool() && other.isBool()) return asBool() < other.asBool();
-        if (isNil() && other.isNil()) return false;
-        
-        // 2. Different types: use a stable order
-        // Order: Nil < Bool < Number < String < List < Table < Function < Class < Instance
-        auto typeOrder = [](const PomeValue& v) {
-            if (v.isNil()) return 0;
-            if (v.isBool()) return 1;
-            if (v.isNumber()) return 2;
-            if (v.isString()) return 3;
-            if (v.isList()) return 4;
-            if (v.isTable()) return 5;
-            if (v.isFunction()) return 6;
-            if (v.isClass()) return 7;
-            if (v.isInstance()) return 8;
-            return 9;
-        };
         
         int t1 = typeOrder(*this);
         int t2 = typeOrder(other);
         if (t1 != t2) return t1 < t2;
-        
-        // Same type but complex object: compare pointers
+
         return value_ < other.value_;
     }
 
+    PomeValue PomeValue::deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const {
+        if (!isObject()) return *this;
+        PomeObject* obj = asObject();
+        if (copiedObjects.count(obj)) return PomeValue(copiedObjects[obj]);
+
+        if (isString()) {
+            PomeString* newStr = targetGC.allocate<PomeString>(asString());
+            copiedObjects[obj] = newStr;
+            return PomeValue(newStr);
+        }
+        if (isList()) {
+            PomeList* oldList = asList();
+            PomeList* newList = targetGC.allocate<PomeList>();
+            copiedObjects[obj] = newList;
+            for (auto& val : oldList->elements) {
+                newList->elements.push_back(val.deepCopy(targetGC, copiedObjects));
+            }
+            return PomeValue(newList);
+        }
+        if (isTable()) {
+            PomeTable* oldTable = asTable();
+            PomeTable* newTable = targetGC.allocate<PomeTable>();
+            copiedObjects[obj] = newTable;
+            for (auto const& [key, val] : oldTable->elements) {
+                newTable->elements[key.deepCopy(targetGC, copiedObjects)] = val.deepCopy(targetGC, copiedObjects);
+            }
+            return PomeValue(newTable);
+        }
+        if (isPomeFunction()) {
+            PomeFunction* oldFunc = asPomeFunction();
+            PomeFunction* newFunc = targetGC.allocate<PomeFunction>();
+            copiedObjects[obj] = newFunc;
+            newFunc->name = oldFunc->name;
+            newFunc->parameters = oldFunc->parameters;
+            newFunc->chunk = oldFunc->chunk; // Bytecode is shared (read-only)
+            newFunc->upvalueCount = oldFunc->upvalueCount;
+            newFunc->isAsync = oldFunc->isAsync;
+            // Note: Upvalues in isolates are tricky. For now, we deep-copy closed upvalues
+            // but isolates generally shouldn't share open upvalues.
+            for (auto* uv : oldFunc->upvalues) {
+                // This is a simplification
+                PomeUpvalue* newUv = targetGC.allocate<PomeUpvalue>(&newUv->closedValue);
+                newUv->closedValue = (*uv->location).deepCopy(targetGC, copiedObjects);
+                newFunc->upvalues.push_back(newUv);
+            }
+            return PomeValue(newFunc);
+        }
+        
+        return *this; // Other types not yet fully supported for deep copy
+    }
+
     void PomeValue::mark(GarbageCollector& gc) const {
-        if (isObject()) {
-            gc.markObject(asObject());
-        }
+        if (isObject()) gc.markObject(asObject());
     }
 
-    /**
-     * Implementation of toString for types that were previously in header or split
-     */
-    std::string PomeList::toString() const
-    {
-        std::string s = "[";
-        for (size_t i = 0; i < elements.size(); ++i)
-        {
-            s += elements[i].toString();
-            if (i < elements.size() - 1)
-                s += ", ";
-        }
-        s += "]";
-        return s;
+    size_t PomeValue::hash() const {
+        if (isString()) return std::hash<std::string>{}(asString());
+        return std::hash<uint64_t>{}(value_);
     }
+
+    PomeValue NativeFunction::call(const std::vector<PomeValue> &args)
+    {
+        return function_(args);
+    }
+
+    // --- Objects ---
+
     void PomeList::markChildren(GarbageCollector& gc) {
-        for (PomeValue& element : elements) {
-            element.mark(gc);
-        }
+        for (auto& val : elements) val.mark(gc);
     }
 
-
-    std::string PomeTable::toString() const
-    {
-        std::string s = "{";
-        size_t i = 0;
-        for (const auto &pair : elements)
-        {
-            s += pair.first.toString() + ": " + pair.second.toString();
-            if (i < elements.size() - 1)
-                s += ", ";
-            i++;
+    std::string PomeList::toString() const {
+        std::string res = "[";
+        for (size_t i = 0; i < elements.size(); ++i) {
+            res += elements[i].toString();
+            if (i < elements.size() - 1) res += ", ";
         }
-        s += "}";
-        return s;
+        res += "]";
+        return res;
     }
+
     void PomeTable::markChildren(GarbageCollector& gc) {
         for (auto const& [key, val] : elements) {
             key.mark(gc);
@@ -301,51 +248,48 @@ namespace Pome
         }
     }
 
-    /**
-     * Class Definition Object
-     */
-    // PomeClass has no children directly managed by GC other than methods map
+    std::string PomeTable::toString() const {
+        std::string res = "{";
+        size_t i = 0;
+        for (auto const& [key, val] : elements) {
+            res += key.toString() + ": " + val.toString();
+            if (++i < elements.size()) res += ", ";
+        }
+        res += "}";
+        return res;
+    }
+
     void PomeClass::markChildren(GarbageCollector& gc) {
         if (superclass) gc.markObject(superclass);
-        for (auto const& [name, func] : methods) {
-            if (func) { // func is PomeFunction*
-                gc.markObject(func);
-            }
+        if (module) gc.markObject(module);
+        for (auto const& [name, method] : methods) {
+            gc.markObject(method);
         }
     }
 
-    /**
-     * Class Instance Object
-     */
-    // PomeInstance methods
+    PomeFunction* PomeClass::findMethod(const std::string &name)
+    {
+        auto it = methods.find(name);
+        if (it != methods.end())
+        {
+            return it->second;
+        }
+        if (superclass) {
+            return superclass->findMethod(name);
+        }
+        return nullptr;
+    }
+
     void PomeInstance::markChildren(GarbageCollector& gc) {
-        if (klass) {
-            gc.markObject(klass);
+        gc.markObject(klass);
+        for (auto const& [name, val] : fields) {
+            val.mark(gc);
         }
         if (fieldsArray) {
             for (uint8_t i = 0; i < fieldCount; ++i) {
                 fieldsArray[i].mark(gc);
             }
         }
-        for (auto const& [name, val] : fields) {
-            val.mark(gc);
-        }
-    }
-
-    PomeValue PomeInstance::get(const std::string &name)
-    {
-        if (fieldsArray) {
-            auto it = klass->fieldNames.find(name);
-            if (it != klass->fieldNames.end()) {
-                return fieldsArray[it->second];
-            }
-        }
-        auto it = fields.find(name);
-        if (it != fields.end())
-        {
-            return it->second;
-        }
-        return PomeValue(); // nil
     }
 
     void PomeInstance::set(const std::string &name, PomeValue value)
@@ -360,6 +304,18 @@ namespace Pome
         fields[name] = value;
     }
 
+    PomeValue PomeInstance::get(const std::string &name) {
+        if (fieldsArray) {
+            auto it = klass->fieldNames.find(name);
+            if (it != klass->fieldNames.end()) {
+                return fieldsArray[it->second];
+            }
+        }
+        auto it = fields.find(name);
+        if (it != fields.end()) return it->second;
+        return PomeValue();
+    }
+
     void PomeInstance::setFieldsArray(GarbageCollector& gc, uint8_t count)
     {
         if (fieldsArray) delete[] fieldsArray;
@@ -368,12 +324,21 @@ namespace Pome
         gc.updateSize(this, gcSize, sizeof(PomeInstance) + count * sizeof(PomeValue));
     }
 
+    PomeFunction::PomeFunction() : chunk(std::make_shared<Chunk>()) {}
+
+    /**
+     * Upvalue Object
+     */
+    void PomeUpvalue::markChildren(GarbageCollector& gc) {
+        if (location) location->mark(gc);
+    }
+
     /**
      * User-defined Function Object
      */
     void PomeFunction::markChildren(GarbageCollector& gc) {
-        for (auto& val : upvalues) {
-            val.mark(gc);
+        for (auto* uv : upvalues) {
+            gc.markObject(uv);
         }
         if (chunk) {
             for (auto& val : chunk->constants) {
@@ -387,8 +352,12 @@ namespace Pome
      */
     void PomeModule::markChildren(GarbageCollector& gc) {
         for (auto const& [key, val] : exports) {
-            key.mark(gc); // Key is PomeValue
-            val.mark(gc); // Value is PomeValue
+            key.mark(gc); 
+            val.mark(gc); 
+        }
+        for (auto const& [key, val] : variables) {
+            key.mark(gc); 
+            val.mark(gc); 
         }
     }
 
@@ -398,109 +367,8 @@ namespace Pome
 
     void PomeTask::markChildren(GarbageCollector& gc) {
         if (function) gc.markObject(function);
-        for (auto& arg : args) {
-            arg.mark(gc);
-        }
+        for (auto& arg : args) arg.mark(gc);
         result.mark(gc);
-    }
-
-    PomeThread::PomeThread() {}
-
-    PomeThread::~PomeThread() {
-        if (handle.joinable()) handle.detach();
-    }
-
-    PomeValue PomeValue::deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const {
-        if (isNil() || isBool() || isNumber()) return *this;
-        if (!isObject()) return *this;
-
-        PomeObject* oldObj = asObject();
-        auto it = copiedObjects.find(oldObj);
-        if (it != copiedObjects.end()) {
-            return PomeValue(it->second);
-        }
-
-        PomeObject* newObj = nullptr;
-        switch (oldObj->type()) {
-            case ObjectType::STRING: {
-                PomeString* oldStr = (PomeString*)oldObj;
-                newObj = targetGC.allocate<PomeString>(oldStr->getValue());
-                break;
-            }
-            case ObjectType::LIST: {
-                PomeList* oldList = (PomeList*)oldObj;
-                PomeList* newList = targetGC.allocate<PomeList>();
-                copiedObjects[oldObj] = newList;
-                for (auto& val : oldList->elements) {
-                    newList->elements.push_back(val.deepCopy(targetGC, copiedObjects));
-                }
-                newObj = newList;
-                break;
-            }
-            case ObjectType::TABLE: {
-                PomeTable* oldTable = (PomeTable*)oldObj;
-                PomeTable* newTable = targetGC.allocate<PomeTable>();
-                copiedObjects[oldObj] = newTable;
-                for (auto const& [key, val] : oldTable->elements) {
-                    newTable->elements[key.deepCopy(targetGC, copiedObjects)] = val.deepCopy(targetGC, copiedObjects);
-                }
-                newObj = newTable;
-                break;
-            }
-            case ObjectType::FUNCTION: {
-                PomeFunction* oldFunc = (PomeFunction*)oldObj;
-                PomeFunction* newFunc = targetGC.allocate<PomeFunction>();
-                copiedObjects[oldObj] = newFunc;
-                newFunc->name = oldFunc->name;
-                newFunc->parameters = oldFunc->parameters;
-                newFunc->chunk = oldFunc->chunk; // Shared bytecode!
-                newFunc->isAsync = oldFunc->isAsync;
-                newFunc->upvalueCount = oldFunc->upvalueCount;
-                for (auto& uv : oldFunc->upvalues) {
-                    newFunc->upvalues.push_back(uv.deepCopy(targetGC, copiedObjects));
-                }
-                newObj = newFunc;
-                break;
-            }
-            case ObjectType::CLASS: {
-                PomeClass* oldClass = (PomeClass*)oldObj;
-                PomeClass* newClass = targetGC.allocate<PomeClass>(oldClass->name);
-                copiedObjects[oldObj] = newClass;
-                if (oldClass->superclass) {
-                    newClass->superclass = (PomeClass*)PomeValue(oldClass->superclass).deepCopy(targetGC, copiedObjects).asObject();
-                }
-                for (auto const& [name, method] : oldClass->methods) {
-                    newClass->methods[name] = (PomeFunction*)PomeValue(method).deepCopy(targetGC, copiedObjects).asObject();
-                }
-                newObj = newClass;
-                break;
-            }
-            case ObjectType::INSTANCE: {
-                PomeInstance* oldInst = (PomeInstance*)oldObj;
-                PomeClass* newClass = (PomeClass*)PomeValue(oldInst->klass).deepCopy(targetGC, copiedObjects).asObject();
-                PomeInstance* newInst = targetGC.allocate<PomeInstance>(newClass);
-                copiedObjects[oldObj] = newInst;
-                
-                if (oldInst->fieldsArray) {
-                    newInst->fieldCount = oldInst->fieldCount;
-                    newInst->fieldsArray = new PomeValue[newInst->fieldCount];
-                    for (uint8_t i = 0; i < newInst->fieldCount; ++i) {
-                        newInst->fieldsArray[i] = oldInst->fieldsArray[i].deepCopy(targetGC, copiedObjects);
-                    }
-                }
-                
-                for (auto const& [name, val] : oldInst->fields) {
-                    newInst->fields[name] = val.deepCopy(targetGC, copiedObjects);
-                }
-                newObj = newInst;
-                break;
-            }
-            default:
-                return PomeValue();
-        }
-
-        if (newObj) copiedObjects[oldObj] = newObj;
-        return PomeValue(newObj);
     }
 
 } // namespace Pome
