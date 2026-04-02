@@ -96,7 +96,13 @@ namespace Pome {
         int lastResultReg = -1; 
         bool strictMode = false;
         
-        int allocReg() { return freeReg++; }
+        int allocReg() { 
+            int reg = freeReg++; 
+            if (currentChunk && freeReg > currentChunk->maxRegisters) {
+                currentChunk->maxRegisters = freeReg;
+            }
+            return reg; 
+        }
         void freeRegs(int n) { freeReg -= n; }
         
         GarbageCollector& gc;

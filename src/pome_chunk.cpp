@@ -16,12 +16,20 @@ namespace Pome {
             offset = disassembleInstruction(chunk, offset);
         }
 
-        // Also disassemble nested functions in constants
+        // Also disassemble nested functions and classes in constants
         for (auto& val : chunk.constants) {
             if (val.isPomeFunction()) {
                 PomeFunction* f = val.asPomeFunction();
                 if (f->chunk) {
                     disassembleChunk(*f->chunk, f->name.c_str());
+                }
+            } else if (val.isClass()) {
+                PomeClass* k = val.asClass();
+                for (auto const& [name, method] : k->methods) {
+                    if (method->chunk) {
+                        std::string fullName = k->name + "::" + name;
+                        disassembleChunk(*method->chunk, fullName.c_str());
+                    }
                 }
             }
         }

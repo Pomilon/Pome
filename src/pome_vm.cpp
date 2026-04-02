@@ -654,9 +654,6 @@ namespace Pome {
                                 *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE_CACHE, a, b, c);
                             }
                         }
-                        if (res.isList()) {
-                             std::cout << "[GETTABLE] WARNING: Retrieved LIST from list at idx=" << idx << " RSS=" << GarbageCollector::getRSS() << "KB" << std::endl;
-                        }
                         R[a] = res;
                         DISPATCH();
                     } else {
@@ -1591,7 +1588,8 @@ namespace Pome {
                     int nextFrameBase = frameBase + a;
 
                     // Zero out registers for the new frame (avoid garbage from previous calls)
-                    for (int i = argCount + 1; i < 64; ++i) {
+                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
+                    for (int i = argCount + 1; i < maxRegs; ++i) {
                         stack[nextFrameBase + i] = PomeValue();
                     }
 
@@ -1696,6 +1694,10 @@ namespace Pome {
                     PomeFunction* func = callee.asPomeFunction();
                     closeUpvalues(R);
                     for (int i = 0; i <= nArgs; ++i) R[i] = R[a + i];
+                    
+                    // Zero out remaining registers in the frame
+                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
+                    for (int i = nArgs + 1; i < maxRegs; ++i) R[i] = PomeValue();
 
                     currentFrame->function = func;                    currentFrame->module = func->module;
                     currentFrame->chunk = func->chunk.get();

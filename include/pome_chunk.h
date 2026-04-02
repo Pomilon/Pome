@@ -26,6 +26,7 @@ namespace Pome {
         std::vector<PomeValue> constants;
         std::vector<int> lines; // Debug info: Line number for each instruction
         std::map<int, InstructionMetadata> metadata;
+        int maxRegisters = 0;
 
         void write(Instruction instruction, int line) {
             code.push_back(instruction);
