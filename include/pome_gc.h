@@ -3,12 +3,29 @@
 
 #include "pome_base.h"
 
+#include <fstream>
+#include <sstream>
+
 namespace Pome {
 
 class VM;
 
 class GarbageCollector {
 public:
+    static size_t getRSS() {
+        std::ifstream is("/proc/self/status");
+        std::string line;
+        while (std::getline(is, line)) {
+            if (line.substr(0, 6) == "VmRSS:") {
+                std::stringstream ss(line.substr(7));
+                size_t rss;
+                ss >> rss;
+                return rss; // in KB
+            }
+        }
+        return 0;
+    }
+
     explicit GarbageCollector();
     
     void setVM(VM* vm);
@@ -24,13 +41,18 @@ public:
     void removeTemporaryRoot(PomeObject* obj);
 
     void markObject(PomeObject* object);
-    void markValue(PomeValue& value);
+    void markValue(const PomeValue& value);
 
     size_t getObjectCount() const;
     size_t getGCCount() const { return gcCount_; }
     std::string getInfo() const;
+    PomeShape* getRootShape() const;
+    void dumpHeap() const;
     
-    void writeBarrier(PomeObject* parent, PomeValue& child);
+    void writeBarrier(PomeObject* parent, const PomeValue& child);
+
+    bool pendingGC = false;
+    bool shouldCollectMinor() const { return youngBytesAllocated_ > nextMinorGC_; }
 
 private:
     VM* vm_ = nullptr;

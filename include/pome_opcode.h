@@ -64,6 +64,8 @@ namespace Pome {
         CATCH,      // Retrieve pending exception
         ASYNC,      // Create a task from a function
         AWAIT,      // Suspend and wait for a task
+        GETFIELD,   // R(A) := R(B).K(C)
+        SETFIELD,   // R(A).K(C) := R(B)
 
         // --- Specialized Opcodes (PEP 659 style) ---
         ADD_NN,     // Specialized ADD for Number + Number
@@ -78,7 +80,14 @@ namespace Pome {
         SETTABLE_CACHE,
         GETFIELD_CACHE,
         SETFIELD_CACHE,
-        CACHE       // Placeholder for specialization data
+
+        // Specialized List Opcodes
+        LIST_ADD_SCALAR,
+        LIST_SUM,
+        GETLIST_N,
+        SETLIST_N,
+
+        OP_COUNT
     };
 
 }

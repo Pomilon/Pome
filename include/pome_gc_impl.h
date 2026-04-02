@@ -21,7 +21,8 @@ namespace Pome {
         }
 
         PomeObject* obj = static_cast<PomeObject*>(object);
-        obj->gcSize = sizeof(T);
+        obj->gcSize = sizeof(T) + obj->extraSize();
+
         obj->generation = 0;
         obj->age = 0;
         obj->next = youngObjects_;

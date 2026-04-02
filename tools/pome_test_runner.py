@@ -3,7 +3,9 @@ import subprocess
 import sys
 
 # Configuration
-POME_BIN = sys.argv[1] if len(sys.argv) > 1 else "./build_new/pome"
+POME_BIN = sys.argv[1] if len(sys.argv) > 1 else "./build/pome"
+if not os.path.exists(POME_BIN) and os.path.exists("./build_new/pome"):
+    POME_BIN = "./build_new/pome"
 TEST_DIR = "test/unit_tests"
 
 def run_test(test_path):

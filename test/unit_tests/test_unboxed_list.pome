@@ -1,0 +1,47 @@
+import list;
+
+print("--- Testing Unboxed Lists ---");
+
+var l = [1.0, 2.0, 3.0, 4.0, 5.0];
+// Should auto-unbox after 4 elements (heuristic in push)
+// Actually NEWLIST also uses push() now.
+
+print("Sum:", list.sum(l)); // 15
+if (list.sum(l) != 15) {
+    print("FAILED: list.sum(l) returned", list.sum(l));
+    exit(1);
+}
+
+// Test add_scalar
+list.add_scalar(l, 10.0);
+print("Sum after add_scalar(10):", list.sum(l)); // 15 + 50 = 65
+if (list.sum(l) != 65) {
+    print("FAILED: list.sum(l) after add_scalar returned", list.sum(l));
+    exit(1);
+}
+
+// Test boxing transition
+list.push(l, "not a number");
+print("List after boxing:", l);
+print("Sum of mixed list (should ignore non-numbers or return 0):", list.sum(l));
+// Current sum implementation ignores non-numbers in boxed lists.
+if (list.sum(l) != 65) {
+     print("FAILED: list.sum(l) after boxing returned", list.sum(l));
+     exit(1);
+}
+
+// Test indexing
+print("Element 0:", l[0]);
+if (l[0] != 11) {
+    print("FAILED: l[0] returned", l[0]);
+    exit(1);
+}
+
+l[1] = 22.0;
+print("Element 1 after set:", l[1]);
+if (l[1] != 22) {
+    print("FAILED: l[1] after set returned", l[1]);
+    exit(1);
+}
+
+print("--- Unboxed List Tests Passed ---");

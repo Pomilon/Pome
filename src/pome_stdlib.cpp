@@ -248,21 +248,78 @@ namespace Pome
                 size_t idx = 0;
                 if (!args.empty() && args[0].isModule()) idx++;
                 if (args.size() < idx + 2 || !args[idx].isList()) return PomeValue(std::monostate{});
-                args[idx].asList()->elements.push_back(args[idx + 1]);
-                gc.writeBarrier(args[idx].asObject(), const_cast<PomeValue&>(args[idx + 1]));
+                PomeList* list = args[idx].asList();
+                size_t oldSize = list->extraSize();
+                list->push(args[idx + 1]);
+                gc.updateSize(list, sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
+                gc.writeBarrier(list, const_cast<PomeValue&>(args[idx + 1]));
                 return PomeValue(std::monostate{});
             });
 
-            registerNative(gc, module, "pop", [](const std::vector<PomeValue> &args)
+            registerNative(gc, module, "pop", [&gc](const std::vector<PomeValue> &args)
             {
                 size_t idx = 0;
                 if (!args.empty() && args[0].isModule()) idx++;
                 if (args.size() <= idx || !args[idx].isList()) return PomeValue(std::monostate{});
-                auto& elements = args[idx].asList()->elements;
-                if (elements.empty()) return PomeValue(std::monostate{});
-                PomeValue val = elements.back();
-                elements.pop_back();
+                PomeList* list = args[idx].asList();
+                size_t oldExtra = list->extraSize();
+                PomeValue val;
+                if (list->isUnboxed) {
+                    if (list->unboxedElements.empty()) return PomeValue(std::monostate{});
+                    val = PomeValue(list->unboxedElements.back());
+                    list->unboxedElements.pop_back();
+                } else {
+                    auto& elements = list->elements;
+                    if (elements.empty()) return PomeValue(std::monostate{});
+                    val = elements.back();
+                    elements.pop_back();
+                }
+                gc.updateSize(list, sizeof(PomeList) + oldExtra, sizeof(PomeList) + list->extraSize());
                 return val;
+            });
+
+            registerNative(gc, module, "len", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isList()) return PomeValue(0.0);
+                PomeList* list = args[idx].asList();
+                return PomeValue((double)(list->isUnboxed ? list->unboxedElements.size() : list->elements.size()));
+            });
+
+            registerNative(gc, module, "sum", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isList()) return PomeValue(0.0);
+                PomeList* list = args[idx].asList();
+                double sum = 0;
+                if (list->isUnboxed) {
+                    for (double d : list->unboxedElements) sum += d;
+                } else {
+                    for (auto& val : list->elements) {
+                        if (val.isNumber()) sum += val.asNumber();
+                    }
+                }
+                return PomeValue(sum);
+            });
+
+            registerNative(gc, module, "add_scalar", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isList() || !args[idx + 1].isNumber()) return PomeValue();
+                PomeList* list = args[idx].asList();
+                double scalar = args[idx + 1].asNumber();
+                if (list->isUnboxed) {
+                    for (double& d : list->unboxedElements) d += scalar;
+                } else {
+                    for (auto& val : list->elements) {
+                        if (val.isNumber()) val = PomeValue(val.asNumber() + scalar);
+                    }
+                    list->tryUnbox();
+                }
+                return args[idx];
             });
 
             return module;

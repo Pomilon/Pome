@@ -12,7 +12,8 @@ namespace Pome {
     using Instruction = uint32_t;
 
     struct InstructionMetadata {
-        PomeValue* globalCache = nullptr;
+        PomeValue globalCache;          // cached value (by copy, safe across map rehash)
+        bool globalCacheValid = false;   // whether globalCache holds a valid entry
         PomeClass* klassCache = nullptr;
         PomeObject* objectCache = nullptr;
         int indexCache = -1;
@@ -42,25 +43,31 @@ namespace Pome {
         }
 
         // --- Instruction Encoding Helpers ---
-        // Op: 6 bits | A: 8 bits | C: 9 bits | B: 9 bits
+        // Op: 8 bits | A: 8 bits | B: 8 bits | C: 8 bits
         
-        static constexpr int SIZE_OP = 6;
+        static constexpr int SIZE_OP = 8;
         static constexpr int SIZE_A = 8;
-        static constexpr int SIZE_C = 9;
-        static constexpr int SIZE_B = 9;
-        static constexpr int SIZE_Bx = SIZE_C + SIZE_B;
+        static constexpr int SIZE_B = 8;
+        static constexpr int SIZE_C = 8;
+        static constexpr int SIZE_Bx = SIZE_B + SIZE_C;
 
         static constexpr int POS_OP = 0;
         static constexpr int POS_A = POS_OP + SIZE_OP;
-        static constexpr int POS_C = POS_A + SIZE_A;
-        static constexpr int POS_B = POS_C + SIZE_C;
-        static constexpr int POS_Bx = POS_C;
+        static constexpr int POS_B = POS_A + SIZE_A;
+        static constexpr int POS_C = POS_B + SIZE_B;
+        static constexpr int POS_Bx = POS_B;
+
+        static constexpr int MAXARG_A = (1 << SIZE_A) - 1;
+        static constexpr int MAXARG_B = (1 << SIZE_B) - 1;
+        static constexpr int MAXARG_C = (1 << SIZE_C) - 1;
+        static constexpr int MAXARG_Bx = (1 << SIZE_Bx) - 1;
+        static constexpr int MAXARG_sBx = (MAXARG_Bx >> 1);
 
         static Instruction makeABC(OpCode op, int a, int b, int c) {
             return (static_cast<Instruction>(op) << POS_OP) |
                    (static_cast<Instruction>(a) << POS_A) |
-                   (static_cast<Instruction>(c) << POS_C) |
-                   (static_cast<Instruction>(b) << POS_B);
+                   (static_cast<Instruction>(b) << POS_B) |
+                   (static_cast<Instruction>(c) << POS_C);
         }
 
         static Instruction makeABx(OpCode op, int a, int bx) {
@@ -95,8 +102,6 @@ namespace Pome {
             return (i >> POS_Bx) & ((1 << SIZE_Bx) - 1);
         }
         
-        static constexpr int MAXARG_sBx = (1 << SIZE_Bx) >> 1; // Bias
-
         static int getSBx(Instruction i) {
             return getBx(i) - MAXARG_sBx;
         }

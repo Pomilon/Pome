@@ -235,15 +235,21 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
             vm.registerNative("len", [](const std::vector<Pome::PomeValue>& args) {
                 if (args.empty()) return Pome::PomeValue(0.0);
                 if (args[0].isString()) return Pome::PomeValue((double)args[0].asString().length());
-                if (args[0].isList()) return Pome::PomeValue((double)args[0].asList()->elements.size());
-                if (args[0].isTable()) return Pome::PomeValue((double)args[0].asTable()->elements.size());
+                if (args[0].isList()) {
+                    Pome::PomeList* lst = args[0].asList();
+                    return Pome::PomeValue((double)(lst->isUnboxed ? lst->unboxedElements.size() : lst->elements.size()));
+                }
+                if (args[0].isTable()) return Pome::PomeValue((double)(args[0].asTable()->properties.size() + args[0].asTable()->backfill.size()));
                 return Pome::PomeValue(0.0);
             });
 
             vm.registerNative("push", [&gc](const std::vector<Pome::PomeValue>& args) {
                 if (args.size() < 2 || !args[0].isList()) return Pome::PomeValue(std::monostate{});
-                args[0].asList()->elements.push_back(args[1]);
-                gc.writeBarrier(args[0].asObject(), const_cast<Pome::PomeValue&>(args[1]));
+                Pome::PomeList* lst = args[0].asList();
+                size_t oldSize = lst->extraSize();
+                lst->push(args[1]);
+                gc.updateSize(lst, sizeof(Pome::PomeList) + oldSize, sizeof(Pome::PomeList) + lst->extraSize());
+                gc.writeBarrier(lst, const_cast<Pome::PomeValue&>(args[1]));
                 return Pome::PomeValue(std::monostate{});
             });
 

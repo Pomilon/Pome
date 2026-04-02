@@ -52,6 +52,7 @@ namespace Pome {
         PomeValue loadNativeModule(const std::string& libraryPath, PomeModule* moduleObj);
         void runEventLoop();
         PomeModule* getCurrentModule() const { return currentModule; }
+        PomeShape* getRootShape() const { return rootShape; }
 
         bool hasError = false;
         PomeValue pendingException;
@@ -61,6 +62,8 @@ namespace Pome {
         void throwException(PomeValue value);
         PomeUpvalue* captureUpvalue(PomeValue* local); // Added
         void closeUpvalues(PomeValue* last);           // Added
+        
+        PomeShape* rootShape = nullptr; // Added
         
         PomeString* charCache[256] = {nullptr};
 
@@ -77,7 +80,7 @@ namespace Pome {
         PomeUpvalue* openUpvalues = nullptr; // Added
 
         // Call Stack
-        std::vector<CallFrame> frames;
+        CallFrame frames[8192];
         int frameCount;
 
         // Exception Handlers
@@ -85,6 +88,9 @@ namespace Pome {
 
         // Async Task Queue
         std::deque<PomeTask*> taskQueue;
+        
+        // Native Function Arguments
+        std::vector<PomeValue> args;
         
         // Active pointers for current frame (optimizations)
         uint32_t* ip;

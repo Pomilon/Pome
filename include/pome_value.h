@@ -32,7 +32,7 @@ namespace Pome
         PomeValue closedValue;
         PomeUpvalue* next = nullptr; 
 
-        explicit PomeUpvalue(PomeValue* slot) : location(slot), closedValue() {}
+        PomeUpvalue(PomeValue* slot) : location(slot), closedValue() {}
         ObjectType type() const override { return ObjectType::UPVALUE; }
         std::string toString() const override { return "<upvalue>"; }
         void markChildren(GarbageCollector& gc) override;
@@ -87,13 +87,23 @@ namespace Pome
     {
     public:
         std::vector<PomeValue> elements;
+        std::vector<double> unboxedElements;
+        bool isUnboxed = false;
 
         PomeList() = default;
         explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
+        
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;
         void markChildren(GarbageCollector& gc) override;
-        size_t extraSize() const { return elements.capacity() * sizeof(PomeValue); }
+        size_t extraSize() const { 
+            return elements.capacity() * sizeof(PomeValue) + unboxedElements.capacity() * sizeof(double);
+        }
+
+        void tryUnbox();
+        void box();
+        void ensureCapacity(size_t capacity);
+        void push(PomeValue val);
     };
 
     /**
@@ -102,13 +112,23 @@ namespace Pome
     class PomeTable : public PomeObject
     {
     public:
-        std::map<PomeValue, PomeValue> elements;
+        PomeShape* shape;
+        std::vector<PomeValue> properties;
+        std::unordered_map<PomeValue, PomeValue> backfill; 
 
-        explicit PomeTable() {}
-        explicit PomeTable(std::map<PomeValue, PomeValue> elems) : elements(std::move(elems)) {}
+        PomeTable(PomeShape* s);
+
+        void set(PomeValue key, PomeValue value);
+        PomeValue get(PomeValue key);
+
         ObjectType type() const override { return ObjectType::TABLE; }
         std::string toString() const override;
         void markChildren(GarbageCollector& gc) override;
+        std::vector<PomeValue> getSortedKeys() const;
+        size_t extraSize() const {
+            return properties.capacity() * sizeof(PomeValue) + 
+                   backfill.size() * (sizeof(PomeValue) * 2 + 16); // 16 bytes overhead for hash map entry
+        }
     };
 
     /**
@@ -122,6 +142,7 @@ namespace Pome
         std::map<std::string, PomeFunction*> methods;
         std::map<std::string, uint8_t> fieldNames; 
         class PomeModule* module = nullptr; 
+        PomeShape* classShape = nullptr;
 
         explicit PomeClass(std::string name) : name(std::move(name)) {}
         ObjectType type() const override { return ObjectType::CLASS; }
@@ -138,21 +159,16 @@ namespace Pome
     {
     public:
         PomeClass* klass;
-        std::map<std::string, PomeValue> fields;
-        
-        PomeValue* fieldsArray = nullptr;
-        uint8_t fieldCount = 0;
+        PomeShape* shape;
+        std::vector<PomeValue> properties;
 
-        explicit PomeInstance(PomeClass* k) : klass(k) {}
-        ~PomeInstance() override { if (fieldsArray) delete[] fieldsArray; }
+        explicit PomeInstance(PomeClass* k, PomeShape* s);
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
 
-        void set(const std::string &name, PomeValue value);
-        PomeValue get(const std::string &name);
+        void set(PomeValue key, PomeValue value);
+        PomeValue get(PomeValue key);
         void markChildren(GarbageCollector& gc) override;
-
-        void setFieldsArray(GarbageCollector& gc, uint8_t count);
     };
 
     /**

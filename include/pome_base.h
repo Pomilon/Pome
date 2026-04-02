@@ -32,6 +32,7 @@ namespace Pome {
         THREAD,
         TASK,
         UPVALUE,
+        SHAPE,
         NATIVE_OBJECT 
     };
 
@@ -48,6 +49,7 @@ namespace Pome {
         PomeObject* next = nullptr;
 
         virtual void markChildren(GarbageCollector& gc) {}
+        virtual size_t extraSize() const { return 0; }
     };
 
     class PomeString;
@@ -61,6 +63,7 @@ namespace Pome {
     class PomeUpvalue;
     class PomeThread;
     class PomeTask;
+    class PomeShape;
 
     class PomeValue;
     using ModuleLoader = std::function<PomeValue(const std::string&)>;
@@ -78,6 +81,8 @@ namespace Pome {
         inline bool isBool() const { return value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE); }
         inline bool isNumber() const { return (value_ & QNAN) != QNAN; }
         inline bool isObject() const { return (value_ & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT); }
+        inline bool isTrue() const { return value_ == (QNAN | TAG_TRUE); }
+        inline bool isFalse() const { return value_ == (QNAN | TAG_FALSE); }
         
         bool isString() const;
         bool isFunction() const;
@@ -89,6 +94,7 @@ namespace Pome {
         bool isInstance() const;
         bool isModule() const;
         bool isTask() const;
+        bool isShape() const;
 
         inline bool asBool() const {
             if (value_ == (QNAN | TAG_TRUE) || value_ == (QNAN | TAG_FALSE))
@@ -121,11 +127,15 @@ namespace Pome {
         PomeClass* asClass() const;
         PomeInstance* asInstance() const;
         PomeModule* asModule() const;
+        PomeShape* asShape() const;
 
         std::string toString() const;
         bool operator==(const PomeValue &other) const;
         bool operator!=(const PomeValue &other) const { return !(*this == other); }
         bool operator<(const PomeValue &other) const;
+        bool operator<=(const PomeValue &other) const;
+        bool operator>(const PomeValue &other) const;
+        bool operator>=(const PomeValue &other) const;
 
         PomeValue deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const;
         void mark(GarbageCollector& gc) const;

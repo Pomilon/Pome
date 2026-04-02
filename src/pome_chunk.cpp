@@ -29,12 +29,12 @@ namespace Pome {
 
     int disassembleInstruction(Chunk& chunk, int offset) {
         uint32_t instruction = chunk.code[offset];
-        OpCode op = static_cast<OpCode>(instruction & 0x3F);
-        int a = (instruction >> 6) & 0xFF;
-        int c = (instruction >> 14) & 0x1FF;
-        int b = (instruction >> 23) & 0x1FF;
-        int bx = (instruction >> 14) & 0x3FFFF;
-        int sbx = static_cast<int>(bx) - Chunk::MAXARG_sBx;
+        OpCode op = Chunk::getOpCode(instruction);
+        int a = Chunk::getA(instruction);
+        int b = Chunk::getB(instruction);
+        int c = Chunk::getC(instruction);
+        int bx = Chunk::getBx(instruction);
+        int sbx = Chunk::getSBx(instruction);
 
         std::cout << std::setw(4) << std::setfill('0') << offset << "  ";
         if (offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1]) {
@@ -79,8 +79,8 @@ namespace Pome {
                     for (int i = 0; i < f->upvalueCount; ++i) {
                         offset++;
                         Instruction uvMeta = chunk.code[offset];
-                        OpCode metaOp = static_cast<OpCode>(uvMeta & 0x3F);
-                        int uvIdx = (uvMeta >> 23) & 0x1FF;
+                        OpCode metaOp = static_cast<OpCode>(uvMeta & 0xFF);
+                        int uvIdx = (uvMeta >> 16) & 0xFF;
                         std::cout << std::setw(4) << std::setfill('0') << offset << "      | " 
                                   << (metaOp == OpCode::MOVE ? "local" : "upval") << " R" << uvIdx << std::endl;
                     }
@@ -91,6 +91,8 @@ namespace Pome {
             case OpCode::NEWTABLE:  std::cout << "NEWTABLE  R" << a << " " << b << " " << c << std::endl; break;
             case OpCode::GETTABLE:  std::cout << "GETTABLE  R" << a << " R" << b << " R" << c << std::endl; break;
             case OpCode::SETTABLE:  std::cout << "SETTABLE  R" << a << " R" << b << " R" << c << std::endl; break;
+            case OpCode::GETFIELD:  std::cout << "GETFIELD  R" << a << " R" << b << " K" << c << " (" << chunk.constants[c].toString() << ")" << std::endl; break;
+            case OpCode::SETFIELD:  std::cout << "SETFIELD  R" << a << " R" << b << " K" << c << " (" << chunk.constants[c].toString() << ")" << std::endl; break;
             case OpCode::SELF:      std::cout << "SELF      R" << a << " R" << b << " R" << c << std::endl; break;
             case OpCode::FORLOOP:   std::cout << "FORLOOP   R" << a << " " << sbx << " (Target: " << (offset + 1 + sbx) << ")" << std::endl; break;
             case OpCode::FORPREP:   std::cout << "FORPREP   R" << a << " " << sbx << " (Target: " << (offset + 1 + sbx) << ")" << std::endl; break;
@@ -117,7 +119,13 @@ namespace Pome {
             case OpCode::DIV_NN:    std::cout << "DIV_NN    R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
             case OpCode::GETGLOBAL_CACHE: std::cout << "GETGLOBAL_CACHE R" << a << " K" << bx << " (" << chunk.constants[bx].toString() << ") (Cached)" << std::endl; break;
             case OpCode::GETFIELD_CACHE:   std::cout << "GETFIELD_CACHE R" << a << " R" << b << " R" << c << " (Cached)" << std::endl; break;
-            case OpCode::CACHE:     std::cout << "CACHE     (Specialization data)" << std::endl; break;
+            case OpCode::GETTABLE_CACHE:   std::cout << "GETTABLE_CACHE R" << a << " R" << b << " R" << c << " (Cached)" << std::endl; break;
+            case OpCode::SETTABLE_CACHE:   std::cout << "SETTABLE_CACHE R" << a << " R" << b << " R" << c << " (Cached)" << std::endl; break;
+            case OpCode::SETFIELD_CACHE:   std::cout << "SETFIELD_CACHE R" << a << " R" << b << " R" << c << " (Cached)" << std::endl; break;
+            case OpCode::LIST_ADD_SCALAR:  std::cout << "LIST_ADD_SCALAR R" << a << " R" << b << " R" << c << std::endl; break;
+            case OpCode::LIST_SUM:         std::cout << "LIST_SUM R" << a << " R" << b << std::endl; break;
+            case OpCode::GETLIST_N:        std::cout << "GETLIST_N R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::SETLIST_N:        std::cout << "SETLIST_N R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
             default:
                 std::cout << "Unknown opcode " << (int)op << " at offset " << offset << std::endl;
                 break;
