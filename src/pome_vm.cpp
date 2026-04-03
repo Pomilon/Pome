@@ -89,7 +89,7 @@ namespace Pome {
 
     void VM::markRoots() {
         for (int i = 0; i < stackTop; ++i) {
-            stack.at(i).mark(gc);
+            stack[i].mark(gc);
         }
         for (auto& arg : args) {
             arg.mark(gc);
@@ -160,6 +160,7 @@ namespace Pome {
         PomeValue* K;
         uint32_t* ip;
         int frameBase;
+        PomeValue* R; 
         
         
         // Decoded operands (Must be local to prevent corruption in recursive calls)
@@ -175,9 +176,10 @@ namespace Pome {
             if (frameBase + 512 >= (int)stack.size()) { \
                 stack.resize(stack.size() * 2); \
             } \
+            R = stack.data() + frameBase; \
             stackTop = frameBase + 256
 
-        #define R(i) stack.at(frameBase + (i))
+        #define R(i) R[(i)]
 
         #define SAVE_FRAME() \
             currentFrame->ip = ip
@@ -1231,9 +1233,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
-                        stack.at(nextFrame->base + 2) = v2;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
+                        stack[nextFrame->base + 2] = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1290,9 +1292,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
-                        stack.at(nextFrame->base + 2) = v2;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
+                        stack[nextFrame->base + 2] = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1349,9 +1351,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
-                        stack.at(nextFrame->base + 2) = v2;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
+                        stack[nextFrame->base + 2] = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1413,9 +1415,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
-                        stack.at(nextFrame->base + 2) = v2;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
+                        stack[nextFrame->base + 2] = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1524,8 +1526,8 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 2;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1619,9 +1621,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(method);
-                        stack.at(nextFrame->base + 1) = v1;
-                        stack.at(nextFrame->base + 2) = v2;
+                        stack[nextFrame->base] = PomeValue(method);
+                        stack[nextFrame->base + 1] = v1;
+                        stack[nextFrame->base + 2] = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1773,14 +1775,15 @@ namespace Pome {
                     // Automatically strip 'self' for module functions called as methods
                     if (func->module && !func->klass && argCount == (int)func->parameters.size() + 1) {
                         for (int i = 0; i < (int)func->parameters.size(); ++i) {
-                            stack.at(nextFrameBase + 1 + i) = stack.at(nextFrameBase + 2 + i);
+                            stack[nextFrameBase + 1 + i] = stack[nextFrameBase + 2 + i];
                         }
                         argCount--;
                     }
 
                     // Zero out registers for the new frame (avoid garbage from previous calls)
-                    for (int i = argCount + 1; i < 256; ++i) {
-                        stack.at(nextFrameBase + i) = PomeValue();
+                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
+                    for (int i = argCount + 1; i < maxRegs; ++i) {
+                        stack[nextFrameBase + i] = PomeValue();
                     }
 
                     if (argCount < (int)func->parameters.size()) {
@@ -1886,7 +1889,8 @@ namespace Pome {
                     for (int i = 0; i <= nArgs; ++i) R(i) = R(a + i);
 
                     // Zero out remaining registers in the frame
-                    for (int i = nArgs + 1; i < 256; ++i) R(i) = PomeValue();
+                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
+                    for (int i = nArgs + 1; i < maxRegs; ++i) R(i) = PomeValue();
                     currentFrame->function = func;                    currentFrame->module = func->module;
                     currentFrame->chunk = func->chunk.get();
                     currentFrame->ip = func->chunk->code.data();
@@ -2009,9 +2013,9 @@ namespace Pome {
                         nf->ip = nextMethod->chunk->code.data();
                         nf->base = stackTop;
                         nf->destReg = a;
-                        stack.at(nf->base) = PomeValue(nextMethod);
-                        stack.at(nf->base + 1) = iterObj;
-                        stack.at(nf->base + 2) = R(b + 1);
+                        stack[nf->base] = PomeValue(nextMethod);
+                        stack[nf->base + 1] = iterObj;
+                        stack[nf->base + 2] = R(b + 1);
                         REFRESH_FRAME();
                         DISPATCH();
                     } else R(a) = PomeValue();
@@ -2258,8 +2262,8 @@ namespace Pome {
                         nextFrame->ip = iterMethod->chunk->code.data();
                         nextFrame->base = stackTop;
                         nextFrame->destReg = a;
-                        stack.at(nextFrame->base) = PomeValue(iterMethod);
-                        stack.at(nextFrame->base + 1) = obj;
+                        stack[nextFrame->base] = PomeValue(iterMethod);
+                        stack[nextFrame->base + 1] = obj;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
