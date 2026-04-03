@@ -254,14 +254,14 @@ namespace Pome {
     &&LABEL_GETFIELD_CACHE, // 63
     &&LABEL_SETFIELD_CACHE, // 64
     &&LABEL_CACHE, // 65
-    &&LABEL_CACHE, // 66
-    &&LABEL_CACHE, // 67
-    &&LABEL_CACHE, // 68
-    &&LABEL_CACHE, // 69
-    &&LABEL_CACHE, // 70
-    &&LABEL_CACHE, // 71
-    &&LABEL_CACHE, // 72
-    &&LABEL_CACHE, // 73
+    &&LABEL_LIST_ADD_SCALAR, // 66
+    &&LABEL_LIST_SUM, // 67
+    &&LABEL_GETLIST_N, // 68
+    &&LABEL_SETLIST_N, // 69
+    &&LABEL_GETLIST_D, // 70
+    &&LABEL_SETLIST_D, // 71
+    &&LABEL_GETLIST_I, // 72
+    &&LABEL_SETLIST_I, // 73
     &&LABEL_CACHE, // 74
     &&LABEL_CACHE, // 75
     &&LABEL_CACHE, // 76
@@ -643,10 +643,15 @@ namespace Pome {
                         int idx = (int)key.asNumber();
                         PomeList* list = obj.asList();
                         PomeValue res;
-                        if (list->isUnboxed) {
-                            if (idx >= 0 && idx < (int)list->unboxedElements.size()) {
-                                res = PomeValue(list->unboxedElements[idx]);
-                                *(ip - 1) = Chunk::makeABC(OpCode::GETLIST_N, a, b, c);
+                        if (list->listType == ListType::DOUBLE) {
+                            if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                                res = PomeValue(list->asDouble()[idx]);
+                                *(ip - 1) = Chunk::makeABC(OpCode::GETLIST_D, a, b, c);
+                            }
+                        } else if (list->listType == ListType::INT32) {
+                            if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                                res = PomeValue((double)list->asInt32()[idx]);
+                                *(ip - 1) = Chunk::makeABC(OpCode::GETLIST_I, a, b, c);
                             }
                         } else {
                             if (idx >= 0 && idx < (int)list->elements.size()) {
@@ -743,14 +748,19 @@ namespace Pome {
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
-                    if (!list->isUnboxed) {
-                        if (idx >= 0 && idx < (int)list->elements.size()) {
+                    if (list->listType == ListType::MIXED) {
+                        if (idx >= 0 && (size_t)idx < list->elements.size()) {
                             R[a] = list->elements[idx];
                             DISPATCH();
                         }
-                    } else {
-                        if (idx >= 0 && idx < (int)list->unboxedElements.size()) {
-                            R[a] = PomeValue(list->unboxedElements[idx]);
+                    } else if (list->listType == ListType::DOUBLE) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue(list->asDouble()[idx]);
+                            DISPATCH();
+                        }
+                    } else if (list->listType == ListType::INT32) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue((double)list->asInt32()[idx]);
                             DISPATCH();
                         }
                     }
@@ -770,14 +780,14 @@ namespace Pome {
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
-                    if (list->isUnboxed) {
-                        if (idx >= 0 && idx < (int)list->unboxedElements.size()) {
-                            R[a] = PomeValue(list->unboxedElements[idx]);
+                    if (list->listType == ListType::DOUBLE) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue(list->asDouble()[idx]);
                             DISPATCH();
                         }
-                    } else {
-                        if (idx >= 0 && idx < (int)list->elements.size()) {
-                            R[a] = list->elements[idx];
+                    } else if (list->listType == ListType::INT32) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue((double)list->asInt32()[idx]);
                             DISPATCH();
                         }
                     }
@@ -798,8 +808,8 @@ namespace Pome {
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
-                    if (!list->isUnboxed) {
-                        if (idx >= 0 && idx < (int)list->elements.size()) {
+                    if (list->listType == ListType::MIXED) {
+                        if (idx >= 0 && (size_t)idx < list->elements.size()) {
                             list->elements[idx] = val;
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -810,10 +820,10 @@ namespace Pome {
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
                         }
-                    } else {
-                        if (idx >= 0 && idx < (int)list->unboxedElements.size()) {
+                    } else if (list->listType == ListType::DOUBLE) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
                             if (val.isNumber()) {
-                                list->unboxedElements[idx] = val.asNumber();
+                                list->asDouble()[idx] = val.asNumber();
                                 DISPATCH();
                             } else {
                                 list->box();
@@ -821,7 +831,32 @@ namespace Pome {
                                 gc.writeBarrier(obj.asObject(), val);
                                 DISPATCH();
                             }
-                        } else if (idx == (int)list->unboxedElements.size()) {
+                        } else if (idx == (int)list->unboxedCount) {
+                            size_t oldSize = list->extraSize();
+                            list->push(val);
+                            gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
+                            gc.writeBarrier(obj.asObject(), val);
+                            DISPATCH();
+                        }
+                    } else if (list->listType == ListType::INT32) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            if (val.isNumber()) {
+                                double d = val.asNumber();
+                                if (d == (int32_t)d) {
+                                    list->asInt32()[idx] = (int32_t)d;
+                                    DISPATCH();
+                                } else {
+                                    list->switchTo(ListType::DOUBLE);
+                                    list->asDouble()[idx] = d;
+                                    DISPATCH();
+                                }
+                            } else {
+                                list->box();
+                                list->elements[idx] = val;
+                                gc.writeBarrier(obj.asObject(), val);
+                                DISPATCH();
+                            }
+                        } else if (idx == (int)list->unboxedCount) {
                             size_t oldSize = list->extraSize();
                             list->push(val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
@@ -846,10 +881,20 @@ namespace Pome {
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
-                    if (list->isUnboxed) {
-                        if (idx >= 0 && idx < (int)list->unboxedElements.size()) {
+                    if (list->isUnboxed()) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
                             if (val.isNumber()) {
-                                list->unboxedElements[idx] = val.asNumber();
+                                double d = val.asNumber();
+                                if (list->listType == ListType::DOUBLE) {
+                                    list->asDouble()[idx] = d;
+                                } else {
+                                    if (d == (int32_t)d) {
+                                        list->asInt32()[idx] = (int32_t)d;
+                                    } else {
+                                        list->switchTo(ListType::DOUBLE);
+                                        list->asDouble()[idx] = d;
+                                    }
+                                }
                                 DISPATCH();
                             } else {
                                 list->box();
@@ -857,7 +902,7 @@ namespace Pome {
                                 gc.writeBarrier(obj.asObject(), val);
                                 DISPATCH();
                             }
-                        } else if (idx == (int)list->unboxedElements.size()) {
+                        } else if (idx == (int)list->unboxedCount) {
                             size_t oldSize = list->extraSize();
                             list->push(val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
@@ -865,7 +910,7 @@ namespace Pome {
                             DISPATCH();
                         }
                     } else {
-                        if (idx >= 0 && idx < (int)list->elements.size()) {
+                        if (idx >= 0 && (size_t)idx < list->elements.size()) {
                             list->elements[idx] = val;
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -875,6 +920,99 @@ namespace Pome {
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
+                        }
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE, a, b, c);
+                goto LABEL_SETTABLE;
+            }
+        }
+
+        LABEL_GETLIST_D: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETLIST_D:
+            #endif
+            {
+                PomeValue obj = R[b];
+                PomeValue key = R[c];
+                if (obj.isList() && key.isNumber()) {
+                    PomeList* list = obj.asList();
+                    int idx = (int)key.asNumber();
+                    if (list->listType == ListType::DOUBLE) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue(list->asDouble()[idx]);
+                            DISPATCH();
+                        }
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE, a, b, c);
+                goto LABEL_GETTABLE;
+            }
+        }
+
+        LABEL_GETLIST_I: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::GETLIST_I:
+            #endif
+            {
+                PomeValue obj = R[b];
+                PomeValue key = R[c];
+                if (obj.isList() && key.isNumber()) {
+                    PomeList* list = obj.asList();
+                    int idx = (int)key.asNumber();
+                    if (list->listType == ListType::INT32) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            R[a] = PomeValue((double)list->asInt32()[idx]);
+                            DISPATCH();
+                        }
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE, a, b, c);
+                goto LABEL_GETTABLE;
+            }
+        }
+
+        LABEL_SETLIST_D: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETLIST_D:
+            #endif
+            {
+                PomeValue obj = R[a];
+                PomeValue key = R[b];
+                PomeValue val = R[c];
+                if (obj.isList() && key.isNumber() && val.isNumber()) {
+                    PomeList* list = obj.asList();
+                    int idx = (int)key.asNumber();
+                    if (list->listType == ListType::DOUBLE) {
+                        if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                            list->asDouble()[idx] = val.asNumber();
+                            DISPATCH();
+                        }
+                    }
+                }
+                *(ip - 1) = Chunk::makeABC(OpCode::SETTABLE, a, b, c);
+                goto LABEL_SETTABLE;
+            }
+        }
+
+        LABEL_SETLIST_I: {
+            #ifndef COMPUTED_GOTO
+            case OpCode::SETLIST_I:
+            #endif
+            {
+                PomeValue obj = R[a];
+                PomeValue key = R[b];
+                PomeValue val = R[c];
+                if (obj.isList() && key.isNumber() && val.isNumber()) {
+                    PomeList* list = obj.asList();
+                    int idx = (int)key.asNumber();
+                    if (list->listType == ListType::INT32) {
+                        double d = val.asNumber();
+                        if (d == (int32_t)d) {
+                            if (idx >= 0 && (size_t)idx < list->unboxedCount) {
+                                list->asInt32()[idx] = (int32_t)d;
+                                DISPATCH();
+                            }
                         }
                     }
                 }
@@ -919,10 +1057,20 @@ namespace Pome {
                         int idx = (int)key.asNumber();
                         PomeList* list = obj.asList();
                         size_t oldSize = list->extraSize();
-                        if (idx >= 0 && idx < (int)(list->isUnboxed ? list->unboxedElements.size() : list->elements.size())) {
-                            if (list->isUnboxed) {
+                        if (idx >= 0 && (size_t)idx < (list->isUnboxed() ? list->unboxedCount : list->elements.size())) {
+                            if (list->isUnboxed()) {
                                 if (val.isNumber()) {
-                                    list->unboxedElements[idx] = val.asNumber();
+                                    double d = val.asNumber();
+                                    if (list->listType == ListType::DOUBLE) {
+                                        list->asDouble()[idx] = d;
+                                    } else {
+                                        if (d == (int32_t)d) {
+                                            list->asInt32()[idx] = (int32_t)d;
+                                        } else {
+                                            list->switchTo(ListType::DOUBLE);
+                                            list->asDouble()[idx] = d;
+                                        }
+                                    }
                                 } else {
                                     list->box();
                                     list->elements[idx] = val;
@@ -933,7 +1081,7 @@ namespace Pome {
                                 gc.writeBarrier(obj.asObject(), val);
                             }
                             DISPATCH();
-                        } else if (idx == (int)(list->isUnboxed ? list->unboxedElements.size() : list->elements.size())) {
+                        } else if (idx == (int)(list->isUnboxed() ? list->unboxedCount : list->elements.size())) {
                             list->push(val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
@@ -966,6 +1114,7 @@ namespace Pome {
                         list->push(val);
                         gc.writeBarrier(list, val);
                     }
+                    list->tryUnbox();
                     gc.updateSize(list, sizeof(PomeList), sizeof(PomeList) + list->extraSize());
                 }
                 R[a] = PomeValue(list); 
@@ -983,9 +1132,18 @@ namespace Pome {
                 if (listVal.isList() && scalarVal.isNumber()) {
                     PomeList* list = listVal.asList();
                     double scalar = scalarVal.asNumber();
-                    if (list->isUnboxed) {
-                        for (double& d : list->unboxedElements) {
-                            d += scalar;
+                    if (list->listType == ListType::DOUBLE) {
+                        double* data = list->asDouble();
+                        for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += scalar;
+                    } else if (list->listType == ListType::INT32) {
+                        if (scalar == (int32_t)scalar) {
+                            int32_t* data = list->asInt32();
+                            int32_t iscalar = (int32_t)scalar;
+                            for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += iscalar;
+                        } else {
+                            list->switchTo(ListType::DOUBLE);
+                            double* data = list->asDouble();
+                            for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += scalar;
                         }
                     } else {
                         for (auto& val : list->elements) {
@@ -1008,8 +1166,12 @@ namespace Pome {
                 if (listVal.isList()) {
                     PomeList* list = listVal.asList();
                     double sum = 0;
-                    if (list->isUnboxed) {
-                        for (double d : list->unboxedElements) sum += d;
+                    if (list->listType == ListType::DOUBLE) {
+                        double* data = list->asDouble();
+                        for (size_t i = 0; i < list->unboxedCount; ++i) sum += data[i];
+                    } else if (list->listType == ListType::INT32) {
+                        int32_t* data = list->asInt32();
+                        for (size_t i = 0; i < list->unboxedCount; ++i) sum += data[i];
                     } else {
                         for (auto& val : list->elements) {
                             if (val.isNumber()) sum += val.asNumber();
@@ -1374,7 +1536,7 @@ namespace Pome {
             {
                 PomeValue v = R[b];
                 if (v.isString()) R[a] = PomeValue((double)v.asString().length());
-                else if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed ? v.asList()->unboxedElements.size() : v.asList()->elements.size()));
+                else if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
                 else if (v.isTable()) R[a] = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
             }
             DISPATCH();
@@ -1551,7 +1713,7 @@ namespace Pome {
                         int valIdx = a + 1;
                         if (R[valIdx].isModule() && argCount == 2) valIdx++;
                         PomeValue v = R[valIdx];
-                        if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed ? v.asList()->unboxedElements.size() : v.asList()->elements.size()));
+                        if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
                         else if (v.isString()) R[a] = PomeValue((double)v.asString().length());
                         else if (v.isTable()) R[a] = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
                         else R[a] = PomeValue();
@@ -1813,12 +1975,14 @@ namespace Pome {
                     }
                 } else if (iterObj.isList()) {
                     PomeList* list = iterObj.asList();
-                    int size = list->isUnboxed ? (int)list->unboxedElements.size() : (int)list->elements.size();
+                    int size = list->isUnboxed() ? (int)list->unboxedCount : (int)list->elements.size();
                     PomeValue lastKey = R[b + 1];
                     int nextIdx = lastKey.isNil() ? 0 : (int)lastKey.asNumber() + 1;
                     if (nextIdx >= 0 && nextIdx < size) {
-                        if (list->isUnboxed) {
-                            R[a] = PomeValue(list->unboxedElements[nextIdx]); // Element
+                        if (list->listType == ListType::DOUBLE) {
+                            R[a] = PomeValue(list->asDouble()[nextIdx]); 
+                        } else if (list->listType == ListType::INT32) {
+                            R[a] = PomeValue((double)list->asInt32()[nextIdx]);
                         } else {
                             R[a] = list->elements[nextIdx];               // Element
                         }
@@ -1859,7 +2023,7 @@ namespace Pome {
                     }
                 } else if (obj.isList()) {
                     if (key.isString() && key.asString() == "len") {
-                        R[a] = PomeValue((double)(obj.asList()->isUnboxed ? obj.asList()->unboxedElements.size() : obj.asList()->elements.size()));
+                        R[a] = PomeValue((double)(obj.asList()->isUnboxed() ? obj.asList()->unboxedCount : obj.asList()->elements.size()));
                     } else R[a] = PomeValue();
                 } else if (obj.isString()) {
                     if (key.isString() && key.asString() == "len") {
@@ -2105,7 +2269,7 @@ namespace Pome {
                 PomeValue endVal = R[c + 1];
                 if (obj.isList()) {
                     PomeList* list = obj.asList();
-                    int size = list->isUnboxed ? (int)list->unboxedElements.size() : (int)list->elements.size();
+                    int size = list->isUnboxed() ? (int)list->unboxedCount : (int)list->elements.size();
                     int s = startVal.isNil() ? 0 : (int)startVal.asNumber();
                     int e = endVal.isNil() ? size : (int)endVal.asNumber();
                     if (s < 0) s = 0;
@@ -2114,19 +2278,22 @@ namespace Pome {
                     PomeList* res = gc.allocateList();
                     if (e > s) {
                         size_t diff = 0;
-                        if (list->isUnboxed) {
-                            res->ensureCapacity(e - s);
-                            res->isUnboxed = true;
-                            res->unboxedElements.assign(list->unboxedElements.begin() + s, list->unboxedElements.begin() + e);
-                            diff = res->unboxedElements.capacity() * sizeof(double);
+                        if (list->isUnboxed()) {
+                            res->listType = list->listType;
+                            res->unboxedCount = e - s;
+                            res->unboxedCapacity = res->unboxedCount;
+                            size_t elementSize = (res->listType == ListType::DOUBLE) ? sizeof(double) : sizeof(int32_t);
+                            res->unboxedData = malloc(res->unboxedCount * elementSize);
+                            memcpy(res->unboxedData, (char*)list->unboxedData + s * elementSize, res->unboxedCount * elementSize);
+                            diff = res->extraSize();
                         } else {
                             res->ensureCapacity(e - s);
-                            res->isUnboxed = false;
+                            res->listType = ListType::MIXED;
                             res->elements.assign(list->elements.begin() + s, list->elements.begin() + e);
                             for (auto& val : res->elements) {
                                 gc.writeBarrier(res, val);
                             }
-                            diff = res->elements.capacity() * sizeof(PomeValue);
+                            diff = res->extraSize();
                         }
                         gc.updateSize(res, sizeof(PomeList), sizeof(PomeList) + diff);
                     }

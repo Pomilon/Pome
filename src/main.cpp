@@ -237,7 +237,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (args[0].isString()) return Pome::PomeValue((double)args[0].asString().length());
                 if (args[0].isList()) {
                     Pome::PomeList* lst = args[0].asList();
-                    return Pome::PomeValue((double)(lst->isUnboxed ? lst->unboxedElements.size() : lst->elements.size()));
+                    return Pome::PomeValue((double)(lst->isUnboxed() ? lst->unboxedCount : lst->elements.size()));
                 }
                 if (args[0].isTable()) return Pome::PomeValue((double)(args[0].asTable()->properties.size() + args[0].asTable()->backfill.size()));
                 return Pome::PomeValue(0.0);

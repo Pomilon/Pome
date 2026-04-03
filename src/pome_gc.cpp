@@ -27,11 +27,17 @@ PomeList* GarbageCollector::allocateList() {
     if (!listPool_.empty()) {
         list = static_cast<PomeList*>(listPool_.back());
         listPool_.pop_back();
-        list->isUnboxed = false;
+        list->listType = ListType::MIXED;
+        if (list->unboxedData) {
+            free(list->unboxedData);
+            list->unboxedData = nullptr;
+            list->unboxedCount = 0;
+            list->unboxedCapacity = 0;
+        }
         list->gcSize = sizeof(PomeList) + list->extraSize();
     } else {
         list = new PomeList();
-        list->isUnboxed = false;
+        list->listType = ListType::MIXED;
         list->gcSize = sizeof(PomeList);
     }
 
@@ -144,11 +150,13 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeOb
             bytesAllocated -= unreached->gcSize;
             if (unreached->type() == ObjectType::LIST && listPool.size() < 1000) {
                 PomeList* lst = static_cast<PomeList*>(unreached);
+                if (lst->unboxedData) free(lst->unboxedData);
+                lst->unboxedData = nullptr;
+                lst->unboxedCount = 0;
+                lst->unboxedCapacity = 0;
+                lst->listType = ListType::MIXED;
                 lst->elements.clear();
-                lst->unboxedElements.clear();
-                lst->isUnboxed = false;
                 if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
-                if (lst->unboxedElements.capacity() > 256) lst->unboxedElements.shrink_to_fit();
                 listPool.push_back(lst);
             } else {
                 delete unreached;
@@ -190,11 +198,13 @@ void GarbageCollector::sweep(bool minor) {
             bytesAllocated_ -= unreached->gcSize;
             if (unreached->type() == ObjectType::LIST && listPool_.size() < 1000) {
                 PomeList* lst = static_cast<PomeList*>(unreached);
+                if (lst->unboxedData) free(lst->unboxedData);
+                lst->unboxedData = nullptr;
+                lst->unboxedCount = 0;
+                lst->unboxedCapacity = 0;
+                lst->listType = ListType::MIXED;
                 lst->elements.clear();
-                lst->unboxedElements.clear();
-                lst->isUnboxed = false;
                 if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
-                if (lst->unboxedElements.capacity() > 256) lst->unboxedElements.shrink_to_fit();
                 listPool_.push_back(lst);
             } else {
                 delete unreached;

@@ -83,27 +83,44 @@ namespace Pome
     /**
      * List Object
      */
+    enum class ListType : uint8_t {
+        MIXED,
+        DOUBLE,
+        INT32
+    };
+
+    /**
+     * List Object
+     */
     class PomeList : public PomeObject
     {
     public:
         std::vector<PomeValue> elements;
-        std::vector<double> unboxedElements;
-        bool isUnboxed = false;
+        void* unboxedData = nullptr;
+        size_t unboxedCount = 0;
+        size_t unboxedCapacity = 0;
+        ListType listType = ListType::MIXED;
 
-        PomeList() = default;
-        explicit PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
+        PomeList();
+        ~PomeList() override;
+        explicit PomeList(std::vector<PomeValue> elems);
         
         ObjectType type() const override { return ObjectType::LIST; }
         std::string toString() const override;
         void markChildren(GarbageCollector& gc) override;
-        size_t extraSize() const { 
-            return elements.capacity() * sizeof(PomeValue) + unboxedElements.capacity() * sizeof(double);
-        }
+        size_t extraSize() const;
 
+        bool isUnboxed() const { return listType != ListType::MIXED; }
         void tryUnbox();
         void box();
         void ensureCapacity(size_t capacity);
         void push(PomeValue val);
+        
+        void switchTo(ListType newType);
+        
+        // Inline accessors for speed
+        double* asDouble() const { return (double*)unboxedData; }
+        int32_t* asInt32() const { return (int32_t*)unboxedData; }
     };
 
     /**

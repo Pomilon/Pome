@@ -264,10 +264,13 @@ namespace Pome
                 PomeList* list = args[idx].asList();
                 size_t oldExtra = list->extraSize();
                 PomeValue val;
-                if (list->isUnboxed) {
-                    if (list->unboxedElements.empty()) return PomeValue(std::monostate{});
-                    val = PomeValue(list->unboxedElements.back());
-                    list->unboxedElements.pop_back();
+                if (list->isUnboxed()) {
+                    if (list->unboxedCount == 0) return PomeValue(std::monostate{});
+                    if (list->listType == ListType::DOUBLE) {
+                        val = PomeValue(list->asDouble()[--list->unboxedCount]);
+                    } else {
+                        val = PomeValue((double)list->asInt32()[--list->unboxedCount]);
+                    }
                 } else {
                     auto& elements = list->elements;
                     if (elements.empty()) return PomeValue(std::monostate{});
@@ -284,7 +287,7 @@ namespace Pome
                 if (!args.empty() && args[0].isModule()) idx++;
                 if (args.size() <= idx || !args[idx].isList()) return PomeValue(0.0);
                 PomeList* list = args[idx].asList();
-                return PomeValue((double)(list->isUnboxed ? list->unboxedElements.size() : list->elements.size()));
+                return PomeValue((double)(list->isUnboxed() ? list->unboxedCount : list->elements.size()));
             });
 
             registerNative(gc, module, "sum", [](const std::vector<PomeValue> &args)
@@ -294,8 +297,12 @@ namespace Pome
                 if (args.size() <= idx || !args[idx].isList()) return PomeValue(0.0);
                 PomeList* list = args[idx].asList();
                 double sum = 0;
-                if (list->isUnboxed) {
-                    for (double d : list->unboxedElements) sum += d;
+                if (list->listType == ListType::DOUBLE) {
+                    double* data = list->asDouble();
+                    for (size_t i = 0; i < list->unboxedCount; ++i) sum += data[i];
+                } else if (list->listType == ListType::INT32) {
+                    int32_t* data = list->asInt32();
+                    for (size_t i = 0; i < list->unboxedCount; ++i) sum += data[i];
                 } else {
                     for (auto& val : list->elements) {
                         if (val.isNumber()) sum += val.asNumber();
@@ -311,8 +318,19 @@ namespace Pome
                 if (args.size() < idx + 2 || !args[idx].isList() || !args[idx + 1].isNumber()) return PomeValue();
                 PomeList* list = args[idx].asList();
                 double scalar = args[idx + 1].asNumber();
-                if (list->isUnboxed) {
-                    for (double& d : list->unboxedElements) d += scalar;
+                if (list->listType == ListType::DOUBLE) {
+                    double* data = list->asDouble();
+                    for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += scalar;
+                } else if (list->listType == ListType::INT32) {
+                    if (scalar == (int32_t)scalar) {
+                        int32_t* data = list->asInt32();
+                        int32_t iscalar = (int32_t)scalar;
+                        for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += iscalar;
+                    } else {
+                        list->switchTo(ListType::DOUBLE);
+                        double* data = list->asDouble();
+                        for (size_t i = 0; i < list->unboxedCount; ++i) data[i] += scalar;
+                    }
                 } else {
                     for (auto& val : list->elements) {
                         if (val.isNumber()) val = PomeValue(val.asNumber() + scalar);

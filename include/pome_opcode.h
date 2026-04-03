@@ -84,8 +84,12 @@ namespace Pome {
         // Specialized List Opcodes
         LIST_ADD_SCALAR,
         LIST_SUM,
-        GETLIST_N,
+        GETLIST_N,  // Generic numeric
         SETLIST_N,
+        GETLIST_D,  // Specialized Double
+        SETLIST_D,
+        GETLIST_I,  // Specialized Int32
+        SETLIST_I,
 
         OP_COUNT
     };

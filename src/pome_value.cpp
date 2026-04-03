@@ -203,9 +203,13 @@ namespace Pome
             PomeList* oldList = asList();
             PomeList* newList = targetGC.allocateList();
             copiedObjects[obj] = newList;
-            if (oldList->isUnboxed) {
-                newList->isUnboxed = true;
-                newList->unboxedElements = oldList->unboxedElements;
+            if (oldList->isUnboxed()) {
+                newList->listType = oldList->listType;
+                newList->unboxedCount = oldList->unboxedCount;
+                newList->unboxedCapacity = oldList->unboxedCount;
+                size_t elementSize = (newList->listType == ListType::DOUBLE) ? sizeof(double) : sizeof(int32_t);
+                newList->unboxedData = malloc(newList->unboxedCount * elementSize);
+                memcpy(newList->unboxedData, oldList->unboxedData, newList->unboxedCount * elementSize);
             } else {
                 for (auto& val : oldList->elements) {
                     newList->elements.push_back(val.deepCopy(targetGC, copiedObjects));
@@ -324,26 +328,48 @@ namespace Pome
     }
 
     void PomeList::markChildren(GarbageCollector& gc) {
-        if (!isUnboxed) {
+        if (!isUnboxed()) {
             for (auto& val : elements) val.mark(gc);
         }
     }
 
+    PomeList::PomeList() = default;
+
+    PomeList::~PomeList() {
+        if (unboxedData) free(unboxedData);
+    }
+
+    PomeList::PomeList(std::vector<PomeValue> elems) : elements(std::move(elems)) {}
+
+    size_t PomeList::extraSize() const {
+        size_t size = elements.capacity() * sizeof(PomeValue);
+        if (listType == ListType::DOUBLE) size += unboxedCapacity * sizeof(double);
+        else if (listType == ListType::INT32) size += unboxedCapacity * sizeof(int32_t);
+        return size;
+    }
+
     std::string PomeList::toString() const {
         std::string res = "[";
-        if (isUnboxed) {
-            for (size_t i = 0; i < unboxedElements.size(); ++i) {
+        if (listType == ListType::DOUBLE) {
+            double* data = asDouble();
+            for (size_t i = 0; i < unboxedCount; ++i) {
                 if (i > 0) res += ", ";
-                double d = unboxedElements[i];
+                double d = data[i];
                 if (d == (long long)d) res += std::to_string((long long)d);
                 else {
                     std::ostringstream ss;
                     ss << std::fixed << std::setprecision(6) << d;
                     std::string s = ss.str();
                     s.erase(s.find_last_not_of('0') + 1, std::string::npos);
-                    if (s.back() == '.') s.pop_back();
+                    if (!s.empty() && s.back() == '.') s.pop_back();
                     res += s;
                 }
+            }
+        } else if (listType == ListType::INT32) {
+            int32_t* data = asInt32();
+            for (size_t i = 0; i < unboxedCount; ++i) {
+                if (i > 0) res += ", ";
+                res += std::to_string(data[i]);
             }
         } else {
             for (size_t i = 0; i < elements.size(); ++i) {
@@ -355,40 +381,80 @@ namespace Pome
         return res;
     }
 
-    void PomeList::tryUnbox() {
-        if (isUnboxed || elements.empty()) return;
+    void PomeList::switchTo(ListType newType) {
+        if (listType == newType) return;
+        if (newType == ListType::MIXED) { box(); return; }
 
-        // Check if all are numbers
+        if (listType == ListType::INT32 && newType == ListType::DOUBLE) {
+            double* newData = (double*)malloc(unboxedCapacity * sizeof(double));
+            int32_t* oldData = asInt32();
+            for (size_t i = 0; i < unboxedCount; ++i) newData[i] = (double)oldData[i];
+            free(unboxedData);
+            unboxedData = newData;
+            listType = ListType::DOUBLE;
+        } else {
+            // Generic box and re-unbox if needed
+            box();
+            listType = newType;
+            tryUnbox();
+        }
+    }
+
+    void PomeList::tryUnbox() {
+        if (isUnboxed() || elements.empty()) return;
+
+        bool allInt = true;
         for (const auto& v : elements) {
             if (!v.isNumber()) return;
+            double d = v.asNumber();
+            if (d != (int32_t)d) allInt = false;
         }
 
-        isUnboxed = true;
-        unboxedElements.reserve(elements.size());
-        for (const auto& v : elements) {
-            unboxedElements.push_back(v.asNumber());
+        if (allInt) {
+            listType = ListType::INT32;
+            unboxedCapacity = elements.size();
+            unboxedCount = elements.size();
+            unboxedData = malloc(unboxedCapacity * sizeof(int32_t));
+            int32_t* data = asInt32();
+            for (size_t i = 0; i < unboxedCount; ++i) data[i] = (int32_t)elements[i].asNumber();
+        } else {
+            listType = ListType::DOUBLE;
+            unboxedCapacity = elements.size();
+            unboxedCount = elements.size();
+            unboxedData = malloc(unboxedCapacity * sizeof(double));
+            double* data = asDouble();
+            for (size_t i = 0; i < unboxedCount; ++i) data[i] = elements[i].asNumber();
         }
+
         elements.clear();
         elements.shrink_to_fit();
     }
 
     void PomeList::box() {
-        if (!isUnboxed) return;
+        if (!isUnboxed()) return;
 
-        elements.reserve(unboxedElements.size());
-        for (double d : unboxedElements) {
-            elements.push_back(PomeValue(d));
+        elements.reserve(unboxedCount);
+        if (listType == ListType::DOUBLE) {
+            double* data = asDouble();
+            for (size_t i = 0; i < unboxedCount; ++i) elements.push_back(PomeValue(data[i]));
+        } else if (listType == ListType::INT32) {
+            int32_t* data = asInt32();
+            for (size_t i = 0; i < unboxedCount; ++i) elements.push_back(PomeValue((double)data[i]));
         }
 
-        unboxedElements.clear();
-        unboxedElements.shrink_to_fit();
-        isUnboxed = false;
+        if (unboxedData) free(unboxedData);
+        unboxedData = nullptr;
+        unboxedCount = 0;
+        unboxedCapacity = 0;
+        listType = ListType::MIXED;
     }
 
     void PomeList::ensureCapacity(size_t capacity) {
-        if (isUnboxed) {
-            if (capacity > unboxedElements.capacity()) {
-                unboxedElements.reserve(capacity);
+        if (isUnboxed()) {
+            if (capacity > unboxedCapacity) {
+                size_t elementSize = (listType == ListType::DOUBLE) ? sizeof(double) : sizeof(int32_t);
+                unboxedData = realloc(unboxedData, capacity * elementSize);
+                unboxedCapacity = capacity;
             }
         } else {
             if (capacity > elements.capacity()) {
@@ -398,9 +464,24 @@ namespace Pome
     }
 
     void PomeList::push(PomeValue val) {
-        if (isUnboxed) {
+        if (listType == ListType::INT32) {
             if (val.isNumber()) {
-                unboxedElements.push_back(val.asNumber());
+                double d = val.asNumber();
+                if (d == (int32_t)d) {
+                    if (unboxedCount >= unboxedCapacity) ensureCapacity(unboxedCapacity == 0 ? 8 : unboxedCapacity * 2);
+                    asInt32()[unboxedCount++] = (int32_t)d;
+                } else {
+                    switchTo(ListType::DOUBLE);
+                    push(val);
+                }
+            } else {
+                box();
+                elements.push_back(val);
+            }
+        } else if (listType == ListType::DOUBLE) {
+            if (val.isNumber()) {
+                if (unboxedCount >= unboxedCapacity) ensureCapacity(unboxedCapacity == 0 ? 8 : unboxedCapacity * 2);
+                asDouble()[unboxedCount++] = val.asNumber();
             } else {
                 box();
                 elements.push_back(val);

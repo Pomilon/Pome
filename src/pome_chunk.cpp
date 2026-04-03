@@ -134,6 +134,10 @@ namespace Pome {
             case OpCode::LIST_SUM:         std::cout << "LIST_SUM R" << a << " R" << b << std::endl; break;
             case OpCode::GETLIST_N:        std::cout << "GETLIST_N R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
             case OpCode::SETLIST_N:        std::cout << "SETLIST_N R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::GETLIST_D:        std::cout << "GETLIST_D R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::SETLIST_D:        std::cout << "SETLIST_D R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::GETLIST_I:        std::cout << "GETLIST_I R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
+            case OpCode::SETLIST_I:        std::cout << "SETLIST_I R" << a << " R" << b << " R" << c << " (Specialized)" << std::endl; break;
             default:
                 std::cout << "Unknown opcode " << (int)op << " at offset " << offset << std::endl;
                 break;
