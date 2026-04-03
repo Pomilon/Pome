@@ -3,7 +3,9 @@ import time
 import os
 import sys
 
-POME_BIN = sys.argv[1] if len(sys.argv) > 1 else "./build_new/pome"
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+POME_BIN = sys.argv[1] if len(sys.argv) > 1 else "./build/pome"
 PYTHON_BIN = "python3"
 
 import re

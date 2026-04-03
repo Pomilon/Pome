@@ -37,6 +37,7 @@ cmake_install.cmake
 *.tmp
 temp/
 tmp/
+benchmarks/tmp_*
 
 # Dependency directories
 deps/
