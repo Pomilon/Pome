@@ -10,6 +10,13 @@
 
 namespace Pome
 {
+    // --- PomeString ---
+    PomeString::PomeString(std::string value) 
+        : value_(std::move(value)) 
+    {
+        hash_ = std::hash<std::string>{}(value_);
+    }
+
     // --- PomeValue ---
 
     PomeValue::PomeValue() : value_(QNAN | TAG_NIL) {}
@@ -173,7 +180,7 @@ namespace Pome
 
     bool PomeValue::operator==(const PomeValue &other) const {
         if (value_ == other.value_) return true;
-        if (isString() && other.isString()) return asString() == other.asString();
+        if (isString() && other.isString()) return asObject() == other.asObject();
         return false;
     }
 
@@ -201,7 +208,7 @@ namespace Pome
         if (copiedObjects.count(obj)) return PomeValue(copiedObjects[obj]);
 
         if (isString()) {
-            PomeString* newStr = targetGC.allocate<PomeString>(asString());
+            PomeString* newStr = targetGC.allocateString(asString());
             copiedObjects[obj] = newStr;
             return PomeValue(newStr);
         }
@@ -268,7 +275,7 @@ namespace Pome
     }
 
     size_t PomeValue::hash() const {
-        if (isString()) return std::hash<std::string>{}(asString());
+        if (isString()) return ((PomeString*)asObject())->getHash();
         return std::hash<uint64_t>{}(value_);
     }
 

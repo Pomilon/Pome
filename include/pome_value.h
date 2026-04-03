@@ -12,14 +12,16 @@ namespace Pome
     class PomeString : public PomeObject
     {
     public:
-        explicit PomeString(std::string value) : value_(std::move(value)) {}
+        explicit PomeString(std::string value);
         ObjectType type() const override { return ObjectType::STRING; }
         std::string toString() const override { return value_; }
         const std::string &getValue() const { return value_; }
         size_t extraSize() const { return value_.capacity(); }
+        size_t getHash() const { return hash_; }
 
     private:
         std::string value_;
+        size_t hash_;
     };
 
     /**

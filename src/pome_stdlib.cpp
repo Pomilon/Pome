@@ -29,7 +29,7 @@ namespace Pome
             /**
              * Create key string
              */
-            PomeString *keyStr = gc.allocate<PomeString>(name);
+            PomeString *keyStr = gc.allocateString(name);
 
             gc.rcMapSet(module->exports, PomeValue(keyStr), PomeValue(funcObj));
         }
@@ -91,7 +91,7 @@ namespace Pome
             /**
              * Constants
              */
-            PomeString *piStr = gc.allocate<PomeString>("pi");
+            PomeString *piStr = gc.allocateString("pi");
             gc.rcMapSet(module->exports, PomeValue(piStr), PomeValue(3.141592653589793));
 
             return module;
@@ -118,7 +118,7 @@ namespace Pome
 
             registerNative(gc, module, "gc_info", [&gc](const std::vector<PomeValue> &args)
             {
-                return PomeValue(gc.allocate<PomeString>(gc.getInfo()));
+                return PomeValue(gc.allocateString(gc.getInfo()));
             });
 
             return module;
@@ -148,7 +148,7 @@ namespace Pome
         std::stringstream buffer;
         buffer << file.rdbuf();
         
-        PomeString* s = gc.allocate<PomeString>(buffer.str());
+        PomeString* s = gc.allocateString(buffer.str());
         return PomeValue(s); });
 
             registerNative(gc, module, "writeFile", [getStringArg](const std::vector<PomeValue> &args)
@@ -168,7 +168,7 @@ namespace Pome
         if (args.size() > idx) std::cout << args[idx].toString(); 
         std::string line;
         if (std::getline(std::cin, line)) {
-            PomeString* s = gc.allocate<PomeString>(line);
+            PomeString* s = gc.allocateString(line);
             return PomeValue(s);
         }
         return PomeValue(std::monostate{}); });
@@ -193,13 +193,13 @@ namespace Pome
         std::string s = args[idx].asString();
         
         if (args.size() < idx + 2 || !args[idx + 1].isNumber()) {
-             PomeString* newS = gc.allocate<PomeString>(s);
+             PomeString* newS = gc.allocateString(s);
              return PomeValue(newS); 
         }
         
         size_t start = static_cast<size_t>(args[idx + 1].asNumber());
         if (start >= s.length()) {
-             PomeString* empty = gc.allocate<PomeString>("");
+             PomeString* empty = gc.allocateString("");
              return PomeValue(empty);
         }
         
@@ -208,7 +208,7 @@ namespace Pome
             len = static_cast<size_t>(args[idx + 2].asNumber());
         }
         
-        PomeString* sub = gc.allocate<PomeString>(s.substr(start, len));
+        PomeString* sub = gc.allocateString(s.substr(start, len));
         return PomeValue(sub); });
 
             registerNative(gc, module, "lower", [&gc](const std::vector<PomeValue> &args)
@@ -218,7 +218,7 @@ namespace Pome
                 if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
                 std::string s = args[idx].asString();
                 for (auto &c : s) c = std::tolower(c);
-                return PomeValue(gc.allocate<PomeString>(s));
+                return PomeValue(gc.allocateString(s));
             });
 
             registerNative(gc, module, "upper", [&gc](const std::vector<PomeValue> &args)
@@ -228,7 +228,7 @@ namespace Pome
                 if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
                 std::string s = args[idx].asString();
                 for (auto &c : s) c = std::toupper(c);
-                return PomeValue(gc.allocate<PomeString>(s));
+                return PomeValue(gc.allocateString(s));
             });
 
             return module;
@@ -543,7 +543,7 @@ PomeModule *createThreadingModule(GarbageCollector &gc, ModuleLoader loader)
                     } else if (retType == &ffi_type_pointer) {
                         char* result;
                         ffi_call(&cif, FFI_FN(addr), &result, values);
-                        if (result) return PomeValue(gc.allocate<PomeString>(result));
+                        if (result) return PomeValue(gc.allocateString(result));
                         return PomeValue(std::monostate{});
                     } else {
                         ffi_call(&cif, FFI_FN(addr), nullptr, values);

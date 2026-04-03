@@ -113,7 +113,7 @@ namespace Pome {
             emit(Chunk::makeABC(uv.isLocal ? OpCode::MOVE : OpCode::GETUPVAL, 0, uv.index, 0), stmt.getLine());
         }
         
-        PomeString* nameStr = gc.allocate<PomeString>(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
+        PomeString* nameStr = gc.allocateString(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
         int nameIdx = addConstant(PomeValue(nameStr));
         emit(Chunk::makeABx(OpCode::SETGLOBAL, reg, nameIdx), stmt.getLine());
         lastResultReg = reg;
@@ -217,7 +217,7 @@ namespace Pome {
     
     void Compiler::visit(StringExpr &expr) {
         int reg = allocReg();
-        PomeString* s = gc.allocate<PomeString>(expr.getValue()); RootGuard sGuard(gc, s);
+        PomeString* s = gc.allocateString(expr.getValue()); RootGuard sGuard(gc, s);
         int constIdx = addConstant(PomeValue(s));
         emit(Chunk::makeABx(OpCode::LOADK, reg, constIdx), expr.getLine());
         lastResultReg = reg;
@@ -256,7 +256,7 @@ namespace Pome {
         // Global Read
         int dest = allocReg();
         
-        PomeString* nameStr = gc.allocate<PomeString>(expr.getName()); RootGuard nameStrGuard(gc, nameStr);
+        PomeString* nameStr = gc.allocateString(expr.getName()); RootGuard nameStrGuard(gc, nameStr);
         int nameIdx = addConstant(PomeValue(nameStr));
         
         emit(Chunk::makeABx(OpCode::GETGLOBAL, dest, nameIdx), expr.getLine());
@@ -331,7 +331,7 @@ namespace Pome {
                         exit(1);
                     }
                     // Global assignment
-                    PomeString* nameStr = gc.allocate<PomeString>(ident->getName()); RootGuard nameStrGuard(gc, nameStr);
+                    PomeString* nameStr = gc.allocateString(ident->getName()); RootGuard nameStrGuard(gc, nameStr);
                     int nameIdx = addConstant(PomeValue(nameStr));
                     emit(Chunk::makeABx(OpCode::SETGLOBAL, valReg, nameIdx), expr.getLine());
                     lastResultReg = valReg;
@@ -341,7 +341,7 @@ namespace Pome {
                 member->getObject()->accept(*this);
                 int objReg = lastResultReg;
                 
-                PomeString* keyStr = gc.allocate<PomeString>(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
+                PomeString* keyStr = gc.allocateString(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
                 int keyIdx = addConstant(PomeValue(keyStr));
 
                 expr.getRight()->accept(*this);
@@ -535,7 +535,7 @@ namespace Pome {
                     exit(1);
                 }
                 // Global
-                PomeString* nameStr = gc.allocate<PomeString>(ident->getName()); RootGuard nameStrGuard(gc, nameStr);
+                PomeString* nameStr = gc.allocateString(ident->getName()); RootGuard nameStrGuard(gc, nameStr);
                 int nameIdx = addConstant(PomeValue(nameStr));
                 if (!op.empty()) {
                     int currentValReg = allocReg();
@@ -561,7 +561,7 @@ namespace Pome {
             int objSafe = allocReg();
             emit(Chunk::makeABC(OpCode::MOVE, objSafe, objReg, 0), stmt.getLine());
 
-            PomeString* keyStr = gc.allocate<PomeString>(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
+            PomeString* keyStr = gc.allocateString(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
             int keyIdx = addConstant(PomeValue(keyStr));
 
             // Evaluate RHS
@@ -630,7 +630,7 @@ namespace Pome {
         expr.getObject()->accept(*this);
         int objReg = lastResultReg;
 
-        PomeString* memberStr = gc.allocate<PomeString>(expr.getMember()); RootGuard memberStrGuard(gc, memberStr);
+        PomeString* memberStr = gc.allocateString(expr.getMember()); RootGuard memberStrGuard(gc, memberStr);
         int memberIdx = addConstant(PomeValue(memberStr));
 
         int dest = allocReg();
@@ -672,7 +672,7 @@ namespace Pome {
             // Reserve: R(A+1) for 'this', R(A+2...) for args
             for (int i = 0; i < argCount + 1; ++i) allocReg();
 
-            PomeString* memberStr = gc.allocate<PomeString>(super->getMember()); RootGuard memberStrGuard(gc, memberStr);
+            PomeString* memberStr = gc.allocateString(super->getMember()); RootGuard memberStrGuard(gc, memberStr);
             int memberIdx = addConstant(PomeValue(memberStr));
             emit(Chunk::makeABC(OpCode::GETSUPER, calleeReg, thisReg, memberIdx), expr.getLine());
             
@@ -700,7 +700,7 @@ namespace Pome {
             // Reserve: R(A+1) for 'this', R(A+2...) for args
             for (int i = 0; i < argCount + 1; ++i) allocReg();
             
-            PomeString* keyStr = gc.allocate<PomeString>(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
+            PomeString* keyStr = gc.allocateString(member->getMember()); RootGuard keyStrGuard(gc, keyStr);
             int keyIdx = addConstant(PomeValue(keyStr));
             
             emit(Chunk::makeABC(OpCode::GETFIELD, calleeReg, objReg, keyIdx), expr.getLine());
@@ -823,7 +823,7 @@ namespace Pome {
             if (superReg == -1) {
                 // Try as global
                 superReg = allocReg();
-                PomeString* superNameStr = gc.allocate<PomeString>(stmt.getSuperclassName()); RootGuard superNameStrGuard(gc, superNameStr);
+                PomeString* superNameStr = gc.allocateString(stmt.getSuperclassName()); RootGuard superNameStrGuard(gc, superNameStr);
                 int superNameIdx = addConstant(PomeValue(superNameStr));
                 emit(Chunk::makeABx(OpCode::GETGLOBAL, superReg, superNameIdx), stmt.getLine());
             }
@@ -831,7 +831,7 @@ namespace Pome {
             emit(Chunk::makeABC(OpCode::INHERIT, classReg, superReg, 0), stmt.getLine());
         }
 
-        PomeString* nameStr = gc.allocate<PomeString>(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
+        PomeString* nameStr = gc.allocateString(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
         int nameIdx = addConstant(PomeValue(nameStr));
         emit(Chunk::makeABx(OpCode::SETGLOBAL, classReg, nameIdx), stmt.getLine());
         lastResultReg = classReg;
@@ -1077,7 +1077,7 @@ namespace Pome {
     }
 
     void Compiler::visit(ImportStmt &stmt) {
-        PomeString* nameStr = gc.allocate<PomeString>(stmt.getModuleName()); RootGuard nameStrGuard(gc, nameStr);
+        PomeString* nameStr = gc.allocateString(stmt.getModuleName()); RootGuard nameStrGuard(gc, nameStr);
         int nameIdx = addConstant(PomeValue(nameStr));
         int reg = allocReg();
         emit(Chunk::makeABx(OpCode::IMPORT, reg, nameIdx), stmt.getLine());
@@ -1101,13 +1101,13 @@ namespace Pome {
     }
 
     void Compiler::visit(FromImportStmt &stmt) {
-        PomeString* nameStr = gc.allocate<PomeString>(stmt.getModuleName()); RootGuard nameStrGuard(gc, nameStr);
+        PomeString* nameStr = gc.allocateString(stmt.getModuleName()); RootGuard nameStrGuard(gc, nameStr);
         int nameIdx = addConstant(PomeValue(nameStr));
         int modReg = allocReg();
         emit(Chunk::makeABx(OpCode::IMPORT, modReg, nameIdx), stmt.getLine());
         
         for (const auto& symbol : stmt.getSymbols()) {
-            PomeString* symStr = gc.allocate<PomeString>(symbol); RootGuard symStrGuard(gc, symStr);
+            PomeString* symStr = gc.allocateString(symbol); RootGuard symStrGuard(gc, symStr);
             int symIdx = addConstant(PomeValue(symStr));
             int symKeyReg = allocReg();
             emit(Chunk::makeABx(OpCode::LOADK, symKeyReg, symIdx), stmt.getLine());
@@ -1134,7 +1134,7 @@ namespace Pome {
         }
 
         if (!name.empty()) {
-            PomeString* nameStr = gc.allocate<PomeString>(name); RootGuard nameStrGuard(gc, nameStr);
+            PomeString* nameStr = gc.allocateString(name); RootGuard nameStrGuard(gc, nameStr);
             int nameIdx = addConstant(PomeValue(nameStr));
             emit(Chunk::makeABx(OpCode::EXPORT, valReg, nameIdx), stmt.getLine());
         }
@@ -1152,7 +1152,7 @@ namespace Pome {
         }
 
         if (!name.empty()) {
-            PomeString* nameStr = gc.allocate<PomeString>(name); RootGuard nameStrGuard(gc, nameStr);
+            PomeString* nameStr = gc.allocateString(name); RootGuard nameStrGuard(gc, nameStr);
             int nameIdx = addConstant(PomeValue(nameStr));
             emit(Chunk::makeABx(OpCode::EXPORT, valReg, nameIdx), stmt.getLine());
         }
@@ -1314,7 +1314,7 @@ namespace Pome {
         }
         
         int dest = allocReg();
-        PomeString* memberStr = gc.allocate<PomeString>(expr.getMember()); RootGuard memberStrGuard(gc, memberStr);
+        PomeString* memberStr = gc.allocateString(expr.getMember()); RootGuard memberStrGuard(gc, memberStr);
         int memberIdx = addConstant(PomeValue(memberStr));
         
         // GETSUPER R(A) R(this) C(index)

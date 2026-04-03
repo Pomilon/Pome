@@ -19,6 +19,42 @@ PomeShape* GarbageCollector::getRootShape() const {
     return nullptr;
 }
 
+PomeString* GarbageCollector::allocateString(const std::string& value) {
+    auto it = stringPool_.find(value);
+    if (it != stringPool_.end()) {
+        return it->second;
+    }
+
+    if (youngBytesAllocated_ > nextMinorGC_) collect(true);
+    if (bytesAllocated_ > nextGC_) collect(false);
+
+    PomeString* str = nullptr;
+    try {
+        str = new PomeString(value);
+    } catch (const std::bad_alloc& e) {
+        collect(false);
+        str = new PomeString(value);
+    }
+
+    str->gcSize = sizeof(PomeString) + str->extraSize();
+
+    str->generation = 0;
+    str->age = 0;
+    str->refCount = 0;
+    str->inZCT = true;
+    zct_.push_back(str);
+
+    str->isMarked = false;
+    str->next = youngObjects_;
+    youngObjects_ = str;
+
+    bytesAllocated_ += str->gcSize;
+    youngBytesAllocated_ += str->gcSize;
+
+    stringPool_[str->getValue()] = str;
+    return str;
+}
+
 PomeList* GarbageCollector::allocateList() {
     if (youngBytesAllocated_ > nextMinorGC_) collect(true);
     if (bytesAllocated_ > nextGC_) collect(false);
@@ -238,8 +274,9 @@ void sweepList(GarbageCollector& gc, PomeObject** listHead, size_t& bytesAllocat
                 if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
                 listPool.push_back(lst);
             } else {
-                // For general objects, we'd need a way to decRef children.
-                // Since this is a specialized VM, we can add decRefChildren to PomeObject.
+                if (unreached->type() == ObjectType::STRING) {
+                    gc.removeStringFromPool(static_cast<PomeString*>(unreached)->getValue());
+                }
                 delete unreached;
             }
         }
@@ -298,6 +335,9 @@ void GarbageCollector::sweep(bool minor) {
                 if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
                 listPool_.push_back(lst);
             } else {
+                if (unreached->type() == ObjectType::STRING) {
+                    removeStringFromPool(static_cast<PomeString*>(unreached)->getValue());
+                }
                 delete unreached;
             }
         }

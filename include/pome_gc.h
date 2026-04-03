@@ -32,7 +32,13 @@ public:
 
     template<typename T, typename... Args>
     T* allocate(Args&&... args);
+
+    PomeString* allocateString(const std::string& value);
     PomeList* allocateList();
+
+    void removeStringFromPool(const std::string& str) {
+        stringPool_.erase(str);
+    }
 
     void updateSize(PomeObject* obj, size_t oldSize, size_t newSize);
 
@@ -78,6 +84,7 @@ private:
     size_t nextMinorGC_ = 16 * 1024 * 1024; 
 
     std::vector<PomeObject*> tempRoots_;
+    std::unordered_map<std::string, PomeString*> stringPool_;
     std::vector<PomeObject*> grayStack_; 
 
     void mark(bool minor);
