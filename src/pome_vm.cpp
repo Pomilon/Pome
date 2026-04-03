@@ -69,6 +69,7 @@ namespace Pome {
         while (openUpvalues != nullptr && openUpvalues->location >= last) {
             PomeUpvalue* upvalue = openUpvalues;
             upvalue->closedValue = *upvalue->location;
+            upvalue->closedValue.incRef();
             upvalue->location = &upvalue->closedValue;
             openUpvalues = upvalue->next;
         }
@@ -78,12 +79,12 @@ namespace Pome {
         PomeString* nameStr = gc.allocate<PomeString>(name);
         RootGuard guard(gc, nameStr);
         NativeFunction* native = gc.allocate<NativeFunction>(name, fn);
-        globals[PomeValue(nameStr)] = PomeValue(native);
+        gc.rcMapSet(globals, PomeValue(nameStr), PomeValue(native));
     }
 
     void VM::registerGlobal(const std::string& name, PomeValue value) {
         PomeString* nameStr = gc.allocate<PomeString>(name);
-        globals[PomeValue(nameStr)] = value;
+        gc.rcMapSet(globals, PomeValue(nameStr), value);
     }
 
     void VM::markRoots() {
@@ -179,6 +180,7 @@ namespace Pome {
         REFRESH_FRAME();
 
     LABEL_EXCEPTION_LOOP:
+        gc.processZCT();
         if (gc.pendingGC) {
             gc.pendingGC = false;
             bool minor = gc.shouldCollectMinor();
@@ -551,9 +553,13 @@ namespace Pome {
                     OpCode op = static_cast<OpCode>(uvMeta & 0xFF);
                     int uvIdx = (uvMeta >> 16) & 0xFF;  // field B: bits 16-23
                     if (op == OpCode::MOVE) {
-                        closure->upvalues.push_back(captureUpvalue(&R[uvIdx]));
+                        PomeUpvalue* uv = captureUpvalue(&R[uvIdx]);
+                        closure->upvalues.push_back(uv);
+                        gc.incrementRef(uv);
                     } else {
-                        closure->upvalues.push_back(currentFrame->function->upvalues[uvIdx]);
+                        PomeUpvalue* uv = currentFrame->function->upvalues[uvIdx];
+                        closure->upvalues.push_back(uv);
+                        gc.incrementRef(uv);
                     }
                 }
                 R[a] = PomeValue(closure);
@@ -574,7 +580,9 @@ namespace Pome {
                         R[a] = it->second;
                         int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                         auto& meta = currentFrame->chunk->metadata[offset];
+                        if (meta.globalCacheValid) meta.globalCache.decRef(gc);
                         meta.globalCache = it->second;   // cache by value (pointer-safe)
+                        meta.globalCache.incRef();
                         meta.globalCacheValid = true;
                         *(ip - 1) = Chunk::makeABx(OpCode::GETGLOBAL_CACHE, a, bx);
                         DISPATCH();
@@ -586,7 +594,9 @@ namespace Pome {
                     R[a] = it->second;
                     int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                     auto& meta = currentFrame->chunk->metadata[offset];
+                    if (meta.globalCacheValid) meta.globalCache.decRef(gc);
                     meta.globalCache = it->second;       // cache by value (pointer-safe)
+                    meta.globalCache.incRef();
                     meta.globalCacheValid = true;
                     *(ip - 1) = Chunk::makeABx(OpCode::GETGLOBAL_CACHE, a, bx);
                 } else {
@@ -606,6 +616,8 @@ namespace Pome {
                 if (meta.globalCacheValid) {
                     R[a] = meta.globalCache;
                 } else {
+                    if (meta.globalCache.isObject()) meta.globalCache.decRef(gc);
+                    meta.globalCacheValid = false;
                     *(ip - 1) = Chunk::makeABx(OpCode::GETGLOBAL, a, bx);
                     goto LABEL_GETGLOBAL;
                 }
@@ -620,10 +632,10 @@ namespace Pome {
             {
                 PomeValue key = K[bx];
                 if (currentModule) {
-                    currentModule->variables[key] = R[a];
+                    gc.rcMapSet(currentModule->variables, key, R[a]);
                     gc.writeBarrier(currentModule, R[a]);
                 } else {
-                    globals[key] = R[a];
+                    gc.rcMapSet(globals, key, R[a]);
                 }
             }
             DISPATCH();
@@ -810,12 +822,12 @@ namespace Pome {
                     int idx = (int)key.asNumber();
                     if (list->listType == ListType::MIXED) {
                         if (idx >= 0 && (size_t)idx < list->elements.size()) {
-                            list->elements[idx] = val;
+                            gc.rcWriteBarrier(&list->elements[idx], val);
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
                         } else if (idx == (int)list->elements.size()) {
                             size_t oldSize = list->extraSize();
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -827,13 +839,13 @@ namespace Pome {
                                 DISPATCH();
                             } else {
                                 list->box();
-                                list->elements[idx] = val;
+                                gc.rcWriteBarrier(&list->elements[idx], val);
                                 gc.writeBarrier(obj.asObject(), val);
                                 DISPATCH();
                             }
                         } else if (idx == (int)list->unboxedCount) {
                             size_t oldSize = list->extraSize();
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -852,13 +864,13 @@ namespace Pome {
                                 }
                             } else {
                                 list->box();
-                                list->elements[idx] = val;
+                                gc.rcWriteBarrier(&list->elements[idx], val);
                                 gc.writeBarrier(obj.asObject(), val);
                                 DISPATCH();
                             }
                         } else if (idx == (int)list->unboxedCount) {
                             size_t oldSize = list->extraSize();
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -898,25 +910,25 @@ namespace Pome {
                                 DISPATCH();
                             } else {
                                 list->box();
-                                list->elements[idx] = val;
+                                gc.rcWriteBarrier(&list->elements[idx], val);
                                 gc.writeBarrier(obj.asObject(), val);
                                 DISPATCH();
                             }
                         } else if (idx == (int)list->unboxedCount) {
                             size_t oldSize = list->extraSize();
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
                         }
                     } else {
                         if (idx >= 0 && (size_t)idx < list->elements.size()) {
-                            list->elements[idx] = val;
+                            gc.rcWriteBarrier(&list->elements[idx], val);
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
                         } else if (idx == (int)list->elements.size()) {
                             size_t oldSize = list->extraSize();
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -1039,17 +1051,18 @@ namespace Pome {
                 PomeValue key = R[b];
                 PomeValue val = R[c];
                 if (obj.isTable()) {
-                    obj.asTable()->set(key, val);
+                    obj.asTable()->set(gc, key, val);
                     gc.writeBarrier(obj.asObject(), val);
                 } else if (obj.isInstance()) {
                     PomeInstance* inst = obj.asInstance();
                     int index = inst->shape->getIndex(key);
                     if (index >= 0) {
                         if (index >= (int)inst->properties.size()) inst->properties.resize(index + 1);
-                        inst->properties[index] = val;
+                        gc.rcWriteBarrier(&inst->properties[index], val);
                     } else {
                         inst->shape = inst->shape->transition(gc, key);
                         inst->properties.push_back(val);
+                        val.incRef();
                     }
                     gc.writeBarrier(inst, val);
                 } else if (obj.isList()) {
@@ -1073,16 +1086,16 @@ namespace Pome {
                                     }
                                 } else {
                                     list->box();
-                                    list->elements[idx] = val;
+                                    gc.rcWriteBarrier(&list->elements[idx], val);
                                     gc.writeBarrier(obj.asObject(), val);
                                 }
                             } else {
-                                list->elements[idx] = val;
+                                gc.rcWriteBarrier(&list->elements[idx], val);
                                 gc.writeBarrier(obj.asObject(), val);
                             }
                             DISPATCH();
                         } else if (idx == (int)(list->isUnboxed() ? list->unboxedCount : list->elements.size())) {
-                            list->push(val);
+                            list->push(gc, val);
                             gc.updateSize(obj.asObject(), sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                             gc.writeBarrier(obj.asObject(), val);
                             DISPATCH();
@@ -1090,9 +1103,8 @@ namespace Pome {
                     }
                     DISPATCH();
                 } else if (obj.isModule()) {
-                    obj.asModule()->exports[key] = val;
+                    gc.rcWriteBarrier(&obj.asModule()->exports[key], val);
                     gc.writeBarrier(obj.asObject(), val);
-                } else {
                     SAVE_FRAME();
                     runtimeError("Cannot set property on non-object.");
                     return PomeValue();
@@ -1111,7 +1123,7 @@ namespace Pome {
                     list->ensureCapacity(b);
                     for (int i = 0; i < b; ++i) {
                         PomeValue val = R[a + 1 + i];
-                        list->push(val);
+                        list->push(gc, val);
                         gc.writeBarrier(list, val);
                     }
                     list->tryUnbox();
@@ -1730,7 +1742,7 @@ namespace Pome {
                         if (lstVal.isList()) {
                             PomeList* lst = lstVal.asList();
                             size_t oldExtra = lst->extraSize();
-                            lst->push(val);
+                            lst->push(gc, val);
                             gc.updateSize(lst, sizeof(PomeList) + oldExtra, sizeof(PomeList) + lst->extraSize());
                             gc.writeBarrier(lst, val);
                             R[a] = val;
@@ -2049,10 +2061,11 @@ namespace Pome {
                     int index = inst->shape->getIndex(key);
                     if (index >= 0) {
                         if (index >= (int)inst->properties.size()) inst->properties.resize(index + 1);
-                        inst->properties[index] = val;
+                        gc.rcWriteBarrier(&inst->properties[index], val);
                     } else {
                         inst->shape = inst->shape->transition(gc, key);
                         inst->properties.push_back(val);
+                        val.incRef();
                     }
                     gc.writeBarrier(inst, val);
                 } else if (obj.isTable()) {
@@ -2135,7 +2148,7 @@ namespace Pome {
                         }
                         remaining = remaining.substr(dotPos + 1);
                     }
-                    currentTable->set(PomeValue(gc.allocate<PomeString>(remaining)), mod);
+                    currentTable->set(gc, PomeValue(gc.allocate<PomeString>(remaining)), mod);
                 }
 
                 R[a] = mod; 
@@ -2149,7 +2162,7 @@ namespace Pome {
             #endif
             if (currentModule) {
                 PomeValue val = R[a];
-                currentModule->exports[K[bx]] = val;
+                gc.rcWriteBarrier(&currentModule->exports[K[bx]], val);
                 gc.writeBarrier(currentModule, val);
             }
             DISPATCH();

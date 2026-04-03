@@ -247,7 +247,7 @@ bool executeSource(const std::string& source, const std::string& scriptPath = ""
                 if (args.size() < 2 || !args[0].isList()) return Pome::PomeValue(std::monostate{});
                 Pome::PomeList* lst = args[0].asList();
                 size_t oldSize = lst->extraSize();
-                lst->push(args[1]);
+                lst->push(gc, args[1]);
                 gc.updateSize(lst, sizeof(Pome::PomeList) + oldSize, sizeof(Pome::PomeList) + lst->extraSize());
                 gc.writeBarrier(lst, const_cast<Pome::PomeValue&>(args[1]));
                 return Pome::PomeValue(std::monostate{});

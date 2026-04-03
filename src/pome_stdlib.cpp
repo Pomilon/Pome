@@ -31,7 +31,7 @@ namespace Pome
              */
             PomeString *keyStr = gc.allocate<PomeString>(name);
 
-            module->exports[PomeValue(keyStr)] = PomeValue(funcObj);
+            gc.rcMapSet(module->exports, PomeValue(keyStr), PomeValue(funcObj));
         }
 
         /**
@@ -92,7 +92,7 @@ namespace Pome
              * Constants
              */
             PomeString *piStr = gc.allocate<PomeString>("pi");
-            module->exports[PomeValue(piStr)] = PomeValue(3.141592653589793);
+            gc.rcMapSet(module->exports, PomeValue(piStr), PomeValue(3.141592653589793));
 
             return module;
         }
@@ -250,7 +250,7 @@ namespace Pome
                 if (args.size() < idx + 2 || !args[idx].isList()) return PomeValue(std::monostate{});
                 PomeList* list = args[idx].asList();
                 size_t oldSize = list->extraSize();
-                list->push(args[idx + 1]);
+                list->push(gc, args[idx + 1]);
                 gc.updateSize(list, sizeof(PomeList) + oldSize, sizeof(PomeList) + list->extraSize());
                 gc.writeBarrier(list, const_cast<PomeValue&>(args[idx + 1]));
                 return PomeValue(std::monostate{});
@@ -275,6 +275,7 @@ namespace Pome
                     auto& elements = list->elements;
                     if (elements.empty()) return PomeValue(std::monostate{});
                     val = elements.back();
+                    val.decRef(gc);
                     elements.pop_back();
                 }
                 gc.updateSize(list, sizeof(PomeList) + oldExtra, sizeof(PomeList) + list->extraSize());

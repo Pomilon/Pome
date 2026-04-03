@@ -43,6 +43,8 @@ namespace Pome {
         virtual std::string toString() const = 0;
 
         bool isMarked = false;
+        bool inZCT = false;     // Added for Reference Counting
+        uint32_t refCount = 0;  // Added for Reference Counting
         uint8_t generation = 0; 
         uint8_t age = 0;        
         size_t gcSize = 0;      
@@ -139,6 +141,10 @@ namespace Pome {
 
         PomeValue deepCopy(GarbageCollector& targetGC, std::map<PomeObject*, PomeObject*>& copiedObjects) const;
         void mark(GarbageCollector& gc) const;
+        
+        void incRef() const;
+        void decRef(GarbageCollector& gc) const;
+
         size_t hash() const;
         uint64_t getRaw() const { return value_; }
 

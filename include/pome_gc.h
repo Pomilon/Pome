@@ -43,6 +43,11 @@ public:
     void markObject(PomeObject* object);
     void markValue(const PomeValue& value);
 
+    void incrementRef(PomeObject* obj);
+    void decrementRef(PomeObject* obj);
+    void addToZCT(PomeObject* obj);
+    void processZCT();
+
     size_t getObjectCount() const;
     size_t getGCCount() const { return gcCount_; }
     std::string getInfo() const;
@@ -50,6 +55,8 @@ public:
     void dumpHeap() const;
     
     void writeBarrier(PomeObject* parent, const PomeValue& child);
+    void rcWriteBarrier(PomeValue* slot, const PomeValue& newValue);
+    void rcMapSet(std::unordered_map<PomeValue, PomeValue>& map, const PomeValue& key, const PomeValue& value);
 
     bool pendingGC = false;
     bool shouldCollectMinor() const { return youngBytesAllocated_ > nextMinorGC_; }
@@ -63,6 +70,7 @@ private:
     
     std::vector<PomeObject*> rememberedSet_; 
     std::vector<PomeObject*> listPool_;
+    std::vector<PomeObject*> zct_; // Zero Count Table
     
     size_t bytesAllocated_ = 0;
     size_t youngBytesAllocated_ = 0;

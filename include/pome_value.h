@@ -114,7 +114,7 @@ namespace Pome
         void tryUnbox();
         void box();
         void ensureCapacity(size_t capacity);
-        void push(PomeValue val);
+        void push(GarbageCollector& gc, PomeValue val);
         
         void switchTo(ListType newType);
         
@@ -135,7 +135,7 @@ namespace Pome
 
         PomeTable(PomeShape* s);
 
-        void set(PomeValue key, PomeValue value);
+        void set(GarbageCollector& gc, PomeValue key, PomeValue value);
         PomeValue get(PomeValue key);
 
         ObjectType type() const override { return ObjectType::TABLE; }
@@ -183,7 +183,7 @@ namespace Pome
         ObjectType type() const override { return ObjectType::INSTANCE; }
         std::string toString() const override { return "<instance of " + klass->name + ">"; }
 
-        void set(PomeValue key, PomeValue value);
+        void set(GarbageCollector& gc, PomeValue key, PomeValue value);
         PomeValue get(PomeValue key);
         void markChildren(GarbageCollector& gc) override;
     };

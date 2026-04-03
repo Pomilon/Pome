@@ -227,11 +227,11 @@ namespace Pome
             std::vector<PomeShape*> chain;
             while (s && s->parent) { chain.push_back(s); s = s->parent; }
             for (int i = (int)chain.size()-1; i >= 0; --i) {
-                newTable->set(chain[i]->propertyKey.deepCopy(targetGC, copiedObjects), 
+                newTable->set(targetGC, chain[i]->propertyKey.deepCopy(targetGC, copiedObjects), 
                                oldTable->properties[chain[i]->propertyIndex].deepCopy(targetGC, copiedObjects));
             }
             for (auto const& [key, val] : oldTable->backfill) {
-                newTable->set(key.deepCopy(targetGC, copiedObjects), val.deepCopy(targetGC, copiedObjects));
+                newTable->set(targetGC, key.deepCopy(targetGC, copiedObjects), val.deepCopy(targetGC, copiedObjects));
             }
             return PomeValue(newTable);
         }
@@ -240,6 +240,25 @@ namespace Pome
 
     void PomeValue::mark(GarbageCollector& gc) const {
         if (isObject()) gc.markObject(asObject());
+    }
+
+    void PomeValue::incRef() const {
+        if (isObject()) {
+            PomeObject* obj = asObject();
+            if (obj) obj->refCount++;
+        }
+    }
+
+    void PomeValue::decRef(GarbageCollector& gc) const {
+        if (isObject()) {
+            PomeObject* obj = asObject();
+            if (obj) {
+                if (obj->refCount > 0) obj->refCount--;
+                if (obj->refCount == 0) {
+                    gc.addToZCT(obj);
+                }
+            }
+        }
     }
 
     size_t PomeValue::hash() const {
@@ -253,12 +272,19 @@ namespace Pome
 
     PomeTable::PomeTable(PomeShape* s) : shape(s) {}
 
-    void PomeTable::set(PomeValue key, PomeValue value) {
+    void PomeTable::set(GarbageCollector& gc, PomeValue key, PomeValue value) {
         int index = shape ? shape->getIndex(key) : -1;
         if (index >= 0) {
-            properties[index] = value;
+            gc.rcWriteBarrier(&properties[index], value);
         } else {
-            backfill[key] = value;
+            auto it = backfill.find(key);
+            if (it != backfill.end()) {
+                gc.rcWriteBarrier(&it->second, value);
+            } else {
+                backfill[key] = value;
+                key.incRef();
+                value.incRef();
+            }
         }
     }
 
@@ -274,10 +300,10 @@ namespace Pome
         if (s) properties.resize(s->propertyIndex + 1);
     }
 
-    void PomeInstance::set(PomeValue key, PomeValue value) {
+    void PomeInstance::set(GarbageCollector& gc, PomeValue key, PomeValue value) {
         int index = shape ? shape->getIndex(key) : -1;
         if (index >= 0) {
-            properties[index] = value;
+            gc.rcWriteBarrier(&properties[index], value);
         }
     }
 
@@ -463,7 +489,7 @@ namespace Pome
         }
     }
 
-    void PomeList::push(PomeValue val) {
+    void PomeList::push(GarbageCollector& gc, PomeValue val) {
         if (listType == ListType::INT32) {
             if (val.isNumber()) {
                 double d = val.asNumber();
@@ -472,11 +498,12 @@ namespace Pome
                     asInt32()[unboxedCount++] = (int32_t)d;
                 } else {
                     switchTo(ListType::DOUBLE);
-                    push(val);
+                    push(gc, val);
                 }
             } else {
                 box();
                 elements.push_back(val);
+                val.incRef();
             }
         } else if (listType == ListType::DOUBLE) {
             if (val.isNumber()) {
@@ -485,9 +512,11 @@ namespace Pome
             } else {
                 box();
                 elements.push_back(val);
+                val.incRef();
             }
         } else {
             elements.push_back(val);
+            val.incRef();
         }
     }
 

@@ -43,6 +43,10 @@ PomeList* GarbageCollector::allocateList() {
 
     list->generation = 0;
     list->age = 0;
+    list->refCount = 0;
+    list->inZCT = true;
+    zct_.push_back(list);
+
     list->isMarked = false;
     list->next = youngObjects_;
     youngObjects_ = list;
@@ -98,6 +102,23 @@ void GarbageCollector::writeBarrier(PomeObject* parent, const PomeValue& child) 
     }
 }
 
+void GarbageCollector::rcWriteBarrier(PomeValue* slot, const PomeValue& newValue) {
+    if (slot->isObject()) decrementRef(slot->asObject());
+    *slot = newValue;
+    if (newValue.isObject()) incrementRef(newValue.asObject());
+}
+
+void GarbageCollector::rcMapSet(std::unordered_map<PomeValue, PomeValue>& map, const PomeValue& key, const PomeValue& value) {
+    auto it = map.find(key);
+    if (it != map.end()) {
+        rcWriteBarrier(&it->second, value);
+    } else {
+        map[key] = value;
+        key.incRef();
+        value.incRef();
+    }
+}
+
 void GarbageCollector::mark(bool minor) {
     if (vm_) {
         vm_->markRoots();
@@ -131,6 +152,54 @@ void GarbageCollector::markValue(const PomeValue& value) {
     value.mark(*this);
 }
 
+void GarbageCollector::incrementRef(PomeObject* obj) {
+    if (obj) obj->refCount++;
+}
+
+void GarbageCollector::decrementRef(PomeObject* obj) {
+    if (obj && obj->refCount > 0) {
+        obj->refCount--;
+        if (obj->refCount == 0) addToZCT(obj);
+    }
+}
+
+void GarbageCollector::addToZCT(PomeObject* obj) {
+    if (obj && !obj->inZCT) {
+        obj->inZCT = true;
+        zct_.push_back(obj);
+    }
+}
+
+void GarbageCollector::processZCT() {
+    if (zct_.size() < 1000) return;
+    
+    // Scan roots (stack, etc.) to identify referenced objects.
+    if (vm_) {
+        vm_->markRoots();
+    }
+    for (auto* obj : tempRoots_) {
+        markObject(obj);
+    }
+    
+    std::vector<PomeObject*> survivors;
+    for (auto* obj : zct_) {
+        if (obj->refCount > 0 || obj->isMarked) {
+            obj->inZCT = true;
+            survivors.push_back(obj);
+        } else {
+            // Truly garbage.
+            obj->inZCT = false;
+        }
+    }
+    zct_ = std::move(survivors);
+    
+    // Reset marks
+    PomeObject* obj = youngObjects_;
+    while (obj) { obj->isMarked = false; obj = obj->next; }
+    obj = oldObjects_;
+    while (obj) { obj->isMarked = false; obj = obj->next; }
+}
+
 void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     for (auto& pair : table) {
         pair.first.mark(*this);
@@ -138,7 +207,7 @@ void GarbageCollector::markTable(std::map<PomeValue, PomeValue>& table) {
     }
 }
 
-void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeObject*>& listPool, bool resetMark) {
+void sweepList(GarbageCollector& gc, PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeObject*>& listPool, bool resetMark) {
     PomeObject** object = listHead;
     while (*object) {
         if ((*object)->isMarked) {
@@ -148,8 +217,18 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeOb
             PomeObject* unreached = *object;
             *object = unreached->next;
             bytesAllocated -= unreached->gcSize;
+            
+            // DecRef children of objects being swept to maintain RC consistency
+            // Wait, we only do this for RC-enabled fields.
+            // But markChildren handles exactly the fields we care about.
+            // However, markChildren uses gc.markObject.
+            // We need a way to decRef children instead.
+            
             if (unreached->type() == ObjectType::LIST && listPool.size() < 1000) {
                 PomeList* lst = static_cast<PomeList*>(unreached);
+                if (!lst->isUnboxed()) {
+                    for (auto& val : lst->elements) val.decRef(gc);
+                }
                 if (lst->unboxedData) free(lst->unboxedData);
                 lst->unboxedData = nullptr;
                 lst->unboxedCount = 0;
@@ -159,6 +238,8 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeOb
                 if (lst->elements.capacity() > 256) lst->elements.shrink_to_fit();
                 listPool.push_back(lst);
             } else {
+                // For general objects, we'd need a way to decRef children.
+                // Since this is a specialized VM, we can add decRefChildren to PomeObject.
                 delete unreached;
             }
         }
@@ -167,7 +248,7 @@ void sweepList(PomeObject** listHead, size_t& bytesAllocated, std::vector<PomeOb
 
 void GarbageCollector::sweep(bool minor) {
     if (!minor) {
-        sweepList(&oldObjects_, bytesAllocated_, listPool_, true);
+        sweepList(*this, &oldObjects_, bytesAllocated_, listPool_, true);
     } else {
         PomeObject* obj = oldObjects_;
         while (obj) {
@@ -196,6 +277,16 @@ void GarbageCollector::sweep(bool minor) {
             PomeObject* unreached = *object;
             *object = unreached->next;
             bytesAllocated_ -= unreached->gcSize;
+
+            // DecRef children for RC consistency
+            if (unreached->type() == ObjectType::LIST) {
+                PomeList* lst = static_cast<PomeList*>(unreached);
+                if (!lst->isUnboxed()) {
+                    for (auto& val : lst->elements) val.decRef(*this);
+                }
+            }
+            // Add more types here if needed, or implement a virtual decRefChildren
+
             if (unreached->type() == ObjectType::LIST && listPool_.size() < 1000) {
                 PomeList* lst = static_cast<PomeList*>(unreached);
                 if (lst->unboxedData) free(lst->unboxedData);

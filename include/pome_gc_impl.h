@@ -25,6 +25,10 @@ namespace Pome {
 
         obj->generation = 0;
         obj->age = 0;
+        obj->refCount = 0;
+        obj->inZCT = true;
+        zct_.push_back(obj);
+
         obj->next = youngObjects_;
         youngObjects_ = obj;
         
