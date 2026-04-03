@@ -1,5 +1,8 @@
 import ffi;
 
+print("ffi:", ffi);
+print("ffi.load:", ffi.load);
+
 // On Linux, libc is usually at libc.so.6
 var libc_path = "libc.so.6";
 var libc = ffi.load(libc_path);

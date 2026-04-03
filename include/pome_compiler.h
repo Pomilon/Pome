@@ -97,13 +97,23 @@ namespace Pome {
         bool strictMode = false;
         
         int allocReg() { 
+            if (freeReg >= 250) {
+                std::cerr << "Compiler Error: Register pool overflow (max 250)." << std::endl;
+                exit(1);
+            }
             int reg = freeReg++; 
             if (currentChunk && freeReg > currentChunk->maxRegisters) {
                 currentChunk->maxRegisters = freeReg;
             }
             return reg; 
         }
-        void freeRegs(int n) { freeReg -= n; }
+        void freeRegs(int n) { 
+            if (n > freeReg) {
+                freeReg = 0;
+            } else {
+                freeReg -= n; 
+            }
+        }
         
         GarbageCollector& gc;
     };

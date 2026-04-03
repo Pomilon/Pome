@@ -89,7 +89,7 @@ namespace Pome {
 
     void VM::markRoots() {
         for (int i = 0; i < stackTop; ++i) {
-            stack[i].mark(gc);
+            stack.at(i).mark(gc);
         }
         for (auto& arg : args) {
             arg.mark(gc);
@@ -121,6 +121,11 @@ namespace Pome {
             if (frames[i].chunk) {
                 for (auto& val : frames[i].chunk->constants) {
                     val.mark(gc);
+                }
+                for (auto& [offset, meta] : frames[i].chunk->metadata) {
+                    if (meta.globalCacheValid) meta.globalCache.mark(gc);
+                    if (meta.objectCache) gc.markObject(meta.objectCache);
+                    if (meta.klassCache) gc.markObject(meta.klassCache);
                 }
             }
         }
@@ -155,7 +160,6 @@ namespace Pome {
         PomeValue* K;
         uint32_t* ip;
         int frameBase;
-        PomeValue* R; 
         
         
         // Decoded operands (Must be local to prevent corruption in recursive calls)
@@ -171,8 +175,9 @@ namespace Pome {
             if (frameBase + 512 >= (int)stack.size()) { \
                 stack.resize(stack.size() * 2); \
             } \
-            R = stack.data() + frameBase; \
             stackTop = frameBase + 256
+
+        #define R(i) stack.at(frameBase + (i))
 
         #define SAVE_FRAME() \
             currentFrame->ip = ip
@@ -477,7 +482,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::MOVE:
             #endif
-            R[a] = R[b];
+            R(a) = R(b);
             DISPATCH();
         }
 
@@ -493,7 +498,7 @@ namespace Pome {
                         method->module = currentModule;
                     }
                 }
-                R[a] = val;
+                R(a) = val;
             }
             DISPATCH();
         }
@@ -502,7 +507,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::LOADBOOL:
             #endif
-            R[a] = PomeValue(b != 0);
+            R(a) = PomeValue(b != 0);
             if (c != 0) ip++;
             DISPATCH();
         }
@@ -512,7 +517,7 @@ namespace Pome {
             case OpCode::LOADNIL:
             #endif
             {
-                for (int i = 0; i <= b; ++i) R[a + i] = PomeValue();
+                for (int i = 0; i <= b; ++i) R(a + i) = PomeValue();
             }
             DISPATCH();
         }
@@ -521,7 +526,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::GETUPVAL:
             #endif
-            R[a] = *currentFrame->function->upvalues[b]->location;
+            R(a) = *currentFrame->function->upvalues[b]->location;
             DISPATCH();
         }
 
@@ -529,7 +534,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::SETUPVAL:
             #endif
-            *currentFrame->function->upvalues[b]->location = R[a];
+            *currentFrame->function->upvalues[b]->location = R(a);
             DISPATCH();
         }
 
@@ -553,7 +558,7 @@ namespace Pome {
                     OpCode op = static_cast<OpCode>(uvMeta & 0xFF);
                     int uvIdx = (uvMeta >> 16) & 0xFF;  // field B: bits 16-23
                     if (op == OpCode::MOVE) {
-                        PomeUpvalue* uv = captureUpvalue(&R[uvIdx]);
+                        PomeUpvalue* uv = captureUpvalue(&R(uvIdx));
                         closure->upvalues.push_back(uv);
                         gc.incrementRef(uv);
                     } else {
@@ -562,7 +567,7 @@ namespace Pome {
                         gc.incrementRef(uv);
                     }
                 }
-                R[a] = PomeValue(closure);
+                R(a) = PomeValue(closure);
             }
             DISPATCH();
         }
@@ -577,7 +582,7 @@ namespace Pome {
                 if (currentModule) {
                     auto it = currentModule->variables.find(key);
                     if (it != currentModule->variables.end()) {
-                        R[a] = it->second;
+                        R(a) = it->second;
                         int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                         auto& meta = currentFrame->chunk->metadata[offset];
                         if (meta.globalCacheValid) meta.globalCache.decRef(gc);
@@ -591,7 +596,7 @@ namespace Pome {
 
                 auto it = globals.find(key);
                 if (it != globals.end()) {
-                    R[a] = it->second;
+                    R(a) = it->second;
                     int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                     auto& meta = currentFrame->chunk->metadata[offset];
                     if (meta.globalCacheValid) meta.globalCache.decRef(gc);
@@ -600,7 +605,7 @@ namespace Pome {
                     meta.globalCacheValid = true;
                     *(ip - 1) = Chunk::makeABx(OpCode::GETGLOBAL_CACHE, a, bx);
                 } else {
-                    R[a] = PomeValue();
+                    R(a) = PomeValue();
                 }
             }
             DISPATCH();
@@ -614,7 +619,7 @@ namespace Pome {
                 int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                 auto& meta = currentFrame->chunk->metadata[offset];
                 if (meta.globalCacheValid) {
-                    R[a] = meta.globalCache;
+                    R(a) = meta.globalCache;
                 } else {
                     if (meta.globalCache.isObject()) meta.globalCache.decRef(gc);
                     meta.globalCacheValid = false;
@@ -632,10 +637,10 @@ namespace Pome {
             {
                 PomeValue key = K[bx];
                 if (currentModule) {
-                    gc.rcMapSet(currentModule->variables, key, R[a]);
-                    gc.writeBarrier(currentModule, R[a]);
+                    gc.rcMapSet(currentModule->variables, key, R(a));
+                    gc.writeBarrier(currentModule, R(a));
                 } else {
-                    gc.rcMapSet(globals, key, R[a]);
+                    gc.rcMapSet(globals, key, R(a));
                 }
             }
             DISPATCH();
@@ -646,10 +651,10 @@ namespace Pome {
             case OpCode::GETTABLE:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue key = R[c];
+                PomeValue obj = R(b);
+                PomeValue key = R(c);
                 if (obj.isTable()) {
-                    R[a] = obj.asTable()->get(key);
+                    R(a) = obj.asTable()->get(key);
                 } else if (obj.isList()) {
                     if (key.isNumber()) {
                         int idx = (int)key.asNumber();
@@ -671,10 +676,10 @@ namespace Pome {
                                 *(ip - 1) = Chunk::makeABC(OpCode::GETTABLE_CACHE, a, b, c);
                             }
                         }
-                        R[a] = res;
+                        R(a) = res;
                         DISPATCH();
                     } else {
-                        R[a] = PomeValue();
+                        R(a) = PomeValue();
                         DISPATCH();
                     }
                 } else if (obj.isString()) {
@@ -688,12 +693,12 @@ namespace Pome {
                                 charStr += (char)ch;
                                 charCache[ch] = gc.allocate<PomeString>(charStr);
                             }
-                            R[a] = PomeValue(charCache[ch]);
+                            R(a) = PomeValue(charCache[ch]);
                         } else {
-                            R[a] = PomeValue();
+                            R(a) = PomeValue();
                         }
                     } else {
-                        R[a] = PomeValue();
+                        R(a) = PomeValue();
                     }
                 } else if (obj.isInstance()) {
                     PomeInstance* inst = obj.asInstance();
@@ -702,18 +707,18 @@ namespace Pome {
                         PomeFunction* method = inst->klass->findMethod(key.toString());
                         if (method) res = PomeValue(method);
                     }
-                    R[a] = res;
+                    R(a) = res;
                 } else if (obj.isModule()) {
                     PomeModule* mod = obj.asModule();
                     auto it = mod->exports.find(key);
                     if (it != mod->exports.end()) {
-                        R[a] = it->second;
+                        R(a) = it->second;
                     } else {
                         // std::cout << "Module export not found: '" << key.toString() << "' in module " << mod << " (path: " << mod->scriptPath << ")" << std::endl;
                         // std::cout << "Available exports: ";
                         // for(auto const& [ekey, eval] : mod->exports) std::cout << ekey.toString() << " ";
                         // std::cout << std::endl;
-                        R[a] = PomeValue();
+                        R(a) = PomeValue();
                     }
                 } else {
                     SAVE_FRAME();
@@ -729,18 +734,18 @@ namespace Pome {
             case OpCode::GETFIELD_CACHE:
             #endif
             {
-                PomeValue obj = R[b];
+                PomeValue obj = R(b);
                 if (obj.isInstance()) {
                     PomeInstance* inst = obj.asInstance();
                     int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
                     auto& meta = currentFrame->chunk->metadata[offset];
                     if (inst->klass == meta.klassCache) {
                         if (meta.indexCache >= 0 && meta.indexCache < (int)inst->properties.size()) {
-                            R[a] = inst->properties[meta.indexCache];
+                            R(a) = inst->properties[meta.indexCache];
                             DISPATCH();
                         }
  else if (meta.objectCache) {
-                            R[a] = PomeValue(meta.objectCache);
+                            R(a) = PomeValue(meta.objectCache);
                             DISPATCH();
                         }
                     }
@@ -755,24 +760,24 @@ namespace Pome {
             case OpCode::GETTABLE_CACHE:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue key = R[c];
+                PomeValue obj = R(b);
+                PomeValue key = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
                     if (list->listType == ListType::MIXED) {
                         if (idx >= 0 && (size_t)idx < list->elements.size()) {
-                            R[a] = list->elements[idx];
+                            R(a) = list->elements[idx];
                             DISPATCH();
                         }
                     } else if (list->listType == ListType::DOUBLE) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue(list->asDouble()[idx]);
+                            R(a) = PomeValue(list->asDouble()[idx]);
                             DISPATCH();
                         }
                     } else if (list->listType == ListType::INT32) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue((double)list->asInt32()[idx]);
+                            R(a) = PomeValue((double)list->asInt32()[idx]);
                             DISPATCH();
                         }
                     }
@@ -787,19 +792,19 @@ namespace Pome {
             case OpCode::GETLIST_N:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue key = R[c];
+                PomeValue obj = R(b);
+                PomeValue key = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
                     if (list->listType == ListType::DOUBLE) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue(list->asDouble()[idx]);
+                            R(a) = PomeValue(list->asDouble()[idx]);
                             DISPATCH();
                         }
                     } else if (list->listType == ListType::INT32) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue((double)list->asInt32()[idx]);
+                            R(a) = PomeValue((double)list->asInt32()[idx]);
                             DISPATCH();
                         }
                     }
@@ -814,9 +819,9 @@ namespace Pome {
             case OpCode::SETTABLE_CACHE:
             #endif
             {
-                PomeValue obj = R[a];
-                PomeValue key = R[b];
-                PomeValue val = R[c];
+                PomeValue obj = R(a);
+                PomeValue key = R(b);
+                PomeValue val = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
@@ -887,9 +892,9 @@ namespace Pome {
             case OpCode::SETLIST_N:
             #endif
             {
-                PomeValue obj = R[a];
-                PomeValue key = R[b];
-                PomeValue val = R[c];
+                PomeValue obj = R(a);
+                PomeValue key = R(b);
+                PomeValue val = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
@@ -945,14 +950,14 @@ namespace Pome {
             case OpCode::GETLIST_D:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue key = R[c];
+                PomeValue obj = R(b);
+                PomeValue key = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
                     if (list->listType == ListType::DOUBLE) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue(list->asDouble()[idx]);
+                            R(a) = PomeValue(list->asDouble()[idx]);
                             DISPATCH();
                         }
                     }
@@ -967,14 +972,14 @@ namespace Pome {
             case OpCode::GETLIST_I:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue key = R[c];
+                PomeValue obj = R(b);
+                PomeValue key = R(c);
                 if (obj.isList() && key.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
                     if (list->listType == ListType::INT32) {
                         if (idx >= 0 && (size_t)idx < list->unboxedCount) {
-                            R[a] = PomeValue((double)list->asInt32()[idx]);
+                            R(a) = PomeValue((double)list->asInt32()[idx]);
                             DISPATCH();
                         }
                     }
@@ -989,9 +994,9 @@ namespace Pome {
             case OpCode::SETLIST_D:
             #endif
             {
-                PomeValue obj = R[a];
-                PomeValue key = R[b];
-                PomeValue val = R[c];
+                PomeValue obj = R(a);
+                PomeValue key = R(b);
+                PomeValue val = R(c);
                 if (obj.isList() && key.isNumber() && val.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
@@ -1012,9 +1017,9 @@ namespace Pome {
             case OpCode::SETLIST_I:
             #endif
             {
-                PomeValue obj = R[a];
-                PomeValue key = R[b];
-                PomeValue val = R[c];
+                PomeValue obj = R(a);
+                PomeValue key = R(b);
+                PomeValue val = R(c);
                 if (obj.isList() && key.isNumber() && val.isNumber()) {
                     PomeList* list = obj.asList();
                     int idx = (int)key.asNumber();
@@ -1047,9 +1052,9 @@ namespace Pome {
             case OpCode::SETTABLE:
             #endif
             {
-                PomeValue obj = R[a];
-                PomeValue key = R[b];
-                PomeValue val = R[c];
+                PomeValue obj = R(a);
+                PomeValue key = R(b);
+                PomeValue val = R(c);
                 if (obj.isTable()) {
                     obj.asTable()->set(gc, key, val);
                     gc.writeBarrier(obj.asObject(), val);
@@ -1122,14 +1127,14 @@ namespace Pome {
                 if (b > 0) {
                     list->ensureCapacity(b);
                     for (int i = 0; i < b; ++i) {
-                        PomeValue val = R[a + 1 + i];
+                        PomeValue val = R(a + 1 + i);
                         list->push(gc, val);
                         gc.writeBarrier(list, val);
                     }
                     list->tryUnbox();
                     gc.updateSize(list, sizeof(PomeList), sizeof(PomeList) + list->extraSize());
                 }
-                R[a] = PomeValue(list); 
+                R(a) = PomeValue(list); 
             }
             DISPATCH();
         }
@@ -1139,8 +1144,8 @@ namespace Pome {
             case OpCode::LIST_ADD_SCALAR:
             #endif
             {
-                PomeValue listVal = R[b];
-                PomeValue scalarVal = R[c];
+                PomeValue listVal = R(b);
+                PomeValue scalarVal = R(c);
                 if (listVal.isList() && scalarVal.isNumber()) {
                     PomeList* list = listVal.asList();
                     double scalar = scalarVal.asNumber();
@@ -1163,7 +1168,7 @@ namespace Pome {
                         }
                         list->tryUnbox();
                     }
-                    R[a] = listVal;
+                    R(a) = listVal;
                 }
             }
             DISPATCH();
@@ -1174,7 +1179,7 @@ namespace Pome {
             case OpCode::LIST_SUM:
             #endif
             {
-                PomeValue listVal = R[b];
+                PomeValue listVal = R(b);
                 if (listVal.isList()) {
                     PomeList* list = listVal.asList();
                     double sum = 0;
@@ -1189,7 +1194,7 @@ namespace Pome {
                             if (val.isNumber()) sum += val.asNumber();
                         }
                     }
-                    R[a] = PomeValue(sum);
+                    R(a) = PomeValue(sum);
                 }
             }
             DISPATCH();
@@ -1199,7 +1204,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::NEWTABLE:
             #endif
-            R[a] = PomeValue(gc.allocate<PomeTable>(rootShape));
+            R(a) = PomeValue(gc.allocate<PomeTable>(rootShape));
             DISPATCH();
         }
 
@@ -1208,11 +1213,11 @@ namespace Pome {
             case OpCode::ADD:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::ADD_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() + v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() + v2.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__add__");
@@ -1226,16 +1231,16 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
-                        stack[nextFrame->base + 2] = v2;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
+                        stack.at(nextFrame->base + 2) = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
-                        R[a] = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
+                        R(a) = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
                     }
                 } else if (v1.isString() || v2.isString()) {
-                    R[a] = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
+                    R(a) = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
                 } else {
                     SAVE_FRAME();
                     runtimeError("Arithmetic on non-number.");
@@ -1250,10 +1255,10 @@ namespace Pome {
             case OpCode::ADD_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() + v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() + v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::ADD, a, b, c);
                     goto LABEL_ADD;
@@ -1267,11 +1272,11 @@ namespace Pome {
             case OpCode::SUB:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::SUB_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() - v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() - v2.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__sub__");
@@ -1285,9 +1290,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
-                        stack[nextFrame->base + 2] = v2;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
+                        stack.at(nextFrame->base + 2) = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1309,10 +1314,10 @@ namespace Pome {
             case OpCode::SUB_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() - v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() - v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::SUB, a, b, c);
                     goto LABEL_SUB;
@@ -1326,11 +1331,11 @@ namespace Pome {
             case OpCode::MUL:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::MUL_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() * v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() * v2.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__mul__");
@@ -1344,9 +1349,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
-                        stack[nextFrame->base + 2] = v2;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
+                        stack.at(nextFrame->base + 2) = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1368,10 +1373,10 @@ namespace Pome {
             case OpCode::MUL_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() * v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() * v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::MUL, a, b, c);
                     goto LABEL_MUL;
@@ -1385,8 +1390,8 @@ namespace Pome {
             case OpCode::DIV:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     if (v2.asNumber() == 0.0) {
                         SAVE_FRAME();
@@ -1394,7 +1399,7 @@ namespace Pome {
                         return PomeValue();
                     }
                     *(ip - 1) = Chunk::makeABC(OpCode::DIV_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() / v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() / v2.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__div__");
@@ -1408,9 +1413,9 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
-                        stack[nextFrame->base + 2] = v2;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
+                        stack.at(nextFrame->base + 2) = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1432,10 +1437,10 @@ namespace Pome {
             case OpCode::DIV_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() / v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() / v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::DIV, a, b, c);
                     goto LABEL_DIV;
@@ -1449,11 +1454,11 @@ namespace Pome {
             case OpCode::MOD:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::MOD_NN, a, b, c);
-                    R[a] = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
+                    R(a) = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
                 } else {
                     SAVE_FRAME();
                     runtimeError("Arithmetic on non-number.");
@@ -1468,10 +1473,10 @@ namespace Pome {
             case OpCode::MOD_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
+                    R(a) = PomeValue(std::fmod(v1.asNumber(), v2.asNumber()));
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::MOD, a, b, c);
                     goto LABEL_MOD;
@@ -1485,10 +1490,10 @@ namespace Pome {
             case OpCode::POW:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(std::pow(v1.asNumber(), v2.asNumber()));
+                    R(a) = PomeValue(std::pow(v1.asNumber(), v2.asNumber()));
                 } else {
                     SAVE_FRAME();
                     runtimeError("Arithmetic on non-number.");
@@ -1503,9 +1508,9 @@ namespace Pome {
             case OpCode::UNM:
             #endif
             {
-                PomeValue v1 = R[b];
+                PomeValue v1 = R(b);
                 if (v1.isNumber()) {
-                    R[a] = PomeValue(-v1.asNumber());
+                    R(a) = PomeValue(-v1.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__neg__");
@@ -1519,8 +1524,8 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 2;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
@@ -1537,7 +1542,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::NOT:
             #endif
-            R[a] = PomeValue(!R[b].asBool());
+            R(a) = PomeValue(!R(b).asBool());
             DISPATCH();
         }
 
@@ -1546,10 +1551,10 @@ namespace Pome {
             case OpCode::LEN:
             #endif
             {
-                PomeValue v = R[b];
-                if (v.isString()) R[a] = PomeValue((double)v.asString().length());
-                else if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
-                else if (v.isTable()) R[a] = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
+                PomeValue v = R(b);
+                if (v.isString()) R(a) = PomeValue((double)v.asString().length());
+                else if (v.isList()) R(a) = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
+                else if (v.isTable()) R(a) = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
             }
             DISPATCH();
         }
@@ -1559,8 +1564,8 @@ namespace Pome {
             case OpCode::CONCAT:
             #endif
             {
-                const PomeValue& v1 = R[b];
-                const PomeValue& v2 = R[c];
+                const PomeValue& v1 = R(b);
+                const PomeValue& v2 = R(c);
                 if (v1.isString() && v2.isString()) {
                     const std::string& s1 = v1.asString();
                     const std::string& s2 = v2.asString();
@@ -1568,9 +1573,9 @@ namespace Pome {
                     res.reserve(s1.size() + s2.size());
                     res.append(s1);
                     res.append(s2);
-                    R[a] = PomeValue(gc.allocate<PomeString>(std::move(res)));
+                    R(a) = PomeValue(gc.allocate<PomeString>(std::move(res)));
                 } else {
-                    R[a] = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
+                    R(a) = PomeValue(gc.allocate<PomeString>(v1.toString() + v2.toString()));
                 }
             }
             DISPATCH();
@@ -1588,7 +1593,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::EQ:
             #endif
-            R[a] = PomeValue(R[b] == R[c]);
+            R(a) = PomeValue(R(b) == R(c));
             DISPATCH();
         }
         LABEL_LT: {
@@ -1596,11 +1601,11 @@ namespace Pome {
             case OpCode::LT:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::LT_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() < v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() < v2.asNumber());
                 } else if (v1.isInstance()) {
                     PomeInstance* instance = v1.asInstance();
                     PomeFunction* method = instance->klass->findMethod("__lt__");
@@ -1614,16 +1619,16 @@ namespace Pome {
                         nextFrame->ip = method->chunk->code.data();
                         nextFrame->base = frameBase + a + 3;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(method);
-                        stack[nextFrame->base + 1] = v1;
-                        stack[nextFrame->base + 2] = v2;
+                        stack.at(nextFrame->base) = PomeValue(method);
+                        stack.at(nextFrame->base + 1) = v1;
+                        stack.at(nextFrame->base + 2) = v2;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
-                        R[a] = PomeValue(v1 < v2);
+                        R(a) = PomeValue(v1 < v2);
                     }
                 } else {
-                    R[a] = PomeValue(v1 < v2);
+                    R(a) = PomeValue(v1 < v2);
                 }
             }
             DISPATCH();
@@ -1634,10 +1639,10 @@ namespace Pome {
             case OpCode::LT_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() < v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() < v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::LT, a, b, c);
                     goto LABEL_LT;
@@ -1651,13 +1656,13 @@ namespace Pome {
             case OpCode::LE:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
                     *(ip - 1) = Chunk::makeABC(OpCode::LE_NN, a, b, c);
-                    R[a] = PomeValue(v1.asNumber() <= v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() <= v2.asNumber());
                 } else {
-                    R[a] = PomeValue(v1 <= v2);
+                    R(a) = PomeValue(v1 <= v2);
                 }
             }
             DISPATCH();
@@ -1668,10 +1673,10 @@ namespace Pome {
             case OpCode::LE_NN:
             #endif
             {
-                PomeValue v1 = R[b];
-                PomeValue v2 = R[c];
+                PomeValue v1 = R(b);
+                PomeValue v2 = R(c);
                 if (v1.isNumber() && v2.isNumber()) {
-                    R[a] = PomeValue(v1.asNumber() <= v2.asNumber());
+                    R(a) = PomeValue(v1.asNumber() <= v2.asNumber());
                 } else {
                     *(ip - 1) = Chunk::makeABC(OpCode::LE, a, b, c);
                     goto LABEL_LE;
@@ -1684,7 +1689,7 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::TEST:
             #endif
-            if (R[a].asBool() == (c != 0)) {
+            if (R(a).asBool() == (c != 0)) {
                 ip++;
             }
             DISPATCH();
@@ -1694,8 +1699,8 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::TESTSET:
             #endif
-            if (R[b].asBool() == (c != 0)) {
-                R[a] = R[b];
+            if (R(b).asBool() == (c != 0)) {
+                R(a) = R(b);
             } else {
                 ip++;
             }
@@ -1707,7 +1712,7 @@ namespace Pome {
             case OpCode::CALL:
             #endif
             {
-                PomeValue callee = R[a];
+                PomeValue callee = R(a);
                 int argCount = b - 1;
                 if (callee.isNativeFunction()) {
                     int offset = (int)(ip - 1 - currentFrame->chunk->code.data());
@@ -1723,62 +1728,73 @@ namespace Pome {
                     
                     if (meta.indexCache == 1 && argCount >= 1) {
                         int valIdx = a + 1;
-                        if (R[valIdx].isModule() && argCount == 2) valIdx++;
-                        PomeValue v = R[valIdx];
-                        if (v.isList()) R[a] = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
-                        else if (v.isString()) R[a] = PomeValue((double)v.asString().length());
-                        else if (v.isTable()) R[a] = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
-                        else R[a] = PomeValue();
+                        if (R(valIdx).isModule() && argCount == 2) valIdx++;
+                        PomeValue v = R(valIdx);
+                        if (v.isList()) R(a) = PomeValue((double)(v.asList()->isUnboxed() ? v.asList()->unboxedCount : v.asList()->elements.size()));
+                        else if (v.isString()) R(a) = PomeValue((double)v.asString().length());
+                        else if (v.isTable()) R(a) = PomeValue((double)(v.asTable()->properties.size() + v.asTable()->backfill.size()));
+                        else R(a) = PomeValue();
                         DISPATCH();
                     } else if (meta.indexCache == 2 && argCount >= 2) {
                         int lstIdx = a + 1;
                         int valIdx = a + 2;
-                        if (R[lstIdx].isModule() && argCount == 3) {
+                        if (R(lstIdx).isModule() && argCount == 3) {
                             lstIdx++;
                             valIdx++;
                         }
-                        PomeValue lstVal = R[lstIdx];
-                        PomeValue val = R[valIdx];
+                        PomeValue lstVal = R(lstIdx);
+                        PomeValue val = R(valIdx);
                         if (lstVal.isList()) {
                             PomeList* lst = lstVal.asList();
                             size_t oldExtra = lst->extraSize();
                             lst->push(gc, val);
                             gc.updateSize(lst, sizeof(PomeList) + oldExtra, sizeof(PomeList) + lst->extraSize());
                             gc.writeBarrier(lst, val);
-                            R[a] = val;
+                            R(a) = val;
                             DISPATCH();
                         }
                     }
                     
                     args.clear();
-                    for (int i = 1; i <= argCount; ++i) args.push_back(R[a + i]);
+                    int startIdx = 1;
+                    if (argCount > 0 && R(a + 1).isModule()) {
+                        startIdx = 2;
+                    }
+                    for (int i = startIdx; i <= argCount; ++i) args.push_back(R(a + i));
                     SAVE_FRAME();
                     PomeValue res = callee.asNativeFunction()->call(args);
                     REFRESH_FRAME(); 
-                    R[a] = res;
+                    R(a) = res;
                     DISPATCH();
                 } else if (callee.isPomeFunction()) {
                     PomeFunction* func = callee.asPomeFunction();
                     int nextFrameBase = frameBase + a;
 
+                    // Automatically strip 'self' for module functions called as methods
+                    if (func->module && !func->klass && argCount == (int)func->parameters.size() + 1) {
+                        for (int i = 0; i < (int)func->parameters.size(); ++i) {
+                            stack.at(nextFrameBase + 1 + i) = stack.at(nextFrameBase + 2 + i);
+                        }
+                        argCount--;
+                    }
+
                     // Zero out registers for the new frame (avoid garbage from previous calls)
-                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
-                    for (int i = argCount + 1; i < maxRegs; ++i) {
-                        stack[nextFrameBase + i] = PomeValue();
+                    for (int i = argCount + 1; i < 256; ++i) {
+                        stack.at(nextFrameBase + i) = PomeValue();
                     }
 
                     if (argCount < (int)func->parameters.size()) {
                         for (int i = argCount; i < (int)func->parameters.size(); ++i) {
-                            R[a + 1 + i] = PomeValue();
+                            R(a + 1 + i) = PomeValue();
                         }
                     }
                     if (func->isAsync) {
                         PomeTask* task = gc.allocate<PomeTask>(func);
                         for (int i = 0; i < argCount; ++i) {
-                            task->args.push_back(R[a + 1 + i]);
+                            task->args.push_back(R(a + 1 + i));
                         }
                         taskQueue.push_back(task);
-                        R[a] = PomeValue(task);
+                        R(a) = PomeValue(task);
                         SAVE_FRAME();
                         DISPATCH();
                     }
@@ -1818,21 +1834,21 @@ namespace Pome {
                         
                         for (auto const& [name, index] : klass->fieldNames) {
                             if (index < (int)instance->properties.size()) {
-                                PomeValue val = R[a + 1 + index];
+                                PomeValue val = R(a + 1 + index);
                                 instance->properties[index] = val;
                                 gc.writeBarrier(instance, val);
                             }
                         }
-                        R[a] = PomeValue(instance);
+                        R(a) = PomeValue(instance);
                         DISPATCH();
                     }
 
                     PomeInstance* instance = gc.allocate<PomeInstance>(klass, rootShape);
 
                     if (init) {
-                        for (int i = argCount; i >= 1; --i) R[a + i + 1] = R[a + i];
-                        R[a] = PomeValue(instance); // return value
-                        R[a + 1] = PomeValue(instance); // this
+                        for (int i = argCount; i >= 1; --i) R(a + i + 1) = R(a + i);
+                        R(a) = PomeValue(instance); // return value
+                        R(a + 1) = PomeValue(instance); // this
                         SAVE_FRAME();
                         if (frameCount >= 8192) runtimeError("Stack overflow");
                         CallFrame* nextFrame = &frames[frameCount++];
@@ -1841,12 +1857,12 @@ namespace Pome {
                         nextFrame->chunk = init->chunk.get();
                         nextFrame->ip = init->chunk->code.data();
                         nextFrame->base = frameBase + a;
-                        nextFrame->destReg = -1; // Don't overwrite instance in R[a]
+                        nextFrame->destReg = -1; // Don't overwrite instance in R(a)
                         nextFrame->task = nullptr;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
-                        R[a] = PomeValue(instance);
+                        R(a) = PomeValue(instance);
                         DISPATCH();
                     }                } else {
                     SAVE_FRAME();
@@ -1863,16 +1879,14 @@ namespace Pome {
             #endif
             {
                 int nArgs = b - 1;
-                PomeValue callee = R[a];
+                PomeValue callee = R(a);
                 if (callee.isPomeFunction()) {
                     PomeFunction* func = callee.asPomeFunction();
-                    closeUpvalues(R);
-                    for (int i = 0; i <= nArgs; ++i) R[i] = R[a + i];
-                    
-                    // Zero out remaining registers in the frame
-                    int maxRegs = func->chunk ? func->chunk->maxRegisters : 64;
-                    for (int i = nArgs + 1; i < maxRegs; ++i) R[i] = PomeValue();
+                    closeUpvalues(stack.data() + frameBase);
+                    for (int i = 0; i <= nArgs; ++i) R(i) = R(a + i);
 
+                    // Zero out remaining registers in the frame
+                    for (int i = nArgs + 1; i < 256; ++i) R(i) = PomeValue();
                     currentFrame->function = func;                    currentFrame->module = func->module;
                     currentFrame->chunk = func->chunk.get();
                     currentFrame->ip = func->chunk->code.data();
@@ -1891,11 +1905,11 @@ namespace Pome {
             case OpCode::RETURN:
             #endif
             {
-                PomeValue result = (b == 0) ? PomeValue() : R[a];
+                PomeValue result = (b == 0) ? PomeValue() : R(a);
                 int dest = currentFrame->destReg;
                 PomeTask* currentTask = currentFrame->task;
                 
-                closeUpvalues(R);
+                closeUpvalues(stack.data() + frameBase);
 
                 if (currentTask) {
                     currentTask->result = result;
@@ -1907,7 +1921,7 @@ namespace Pome {
                 }
                 REFRESH_FRAME();
                 if (dest != -1) {
-                    R[dest] = result;
+                    R(dest) = result;
                 }
             }
             DISPATCH();
@@ -1925,12 +1939,12 @@ namespace Pome {
             case OpCode::FORLOOP:
             #endif
             {
-                double step = R[a+2].asNumber();
-                double idx = R[a].asNumber() + step;
-                double limit = R[a+1].asNumber();
+                double step = R(a+2).asNumber();
+                double idx = R(a).asNumber() + step;
+                double limit = R(a+1).asNumber();
                 if ((step > 0 && idx <= limit) || (step <= 0 && idx >= limit)) {
-                    R[a] = PomeValue(idx);
-                    R[a+3] = PomeValue(idx);
+                    R(a) = PomeValue(idx);
+                    R(a+3) = PomeValue(idx);
                     ip += sbx;
                 }
             }
@@ -1941,10 +1955,10 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::FORPREP:
             #endif
-            R[a].asNumber(); // Ensure it's a number
-            R[a+1].asNumber();
-            R[a+2].asNumber();
-            R[a] = PomeValue(R[a].asNumber() - R[a+2].asNumber());
+            R(a).asNumber(); // Ensure it's a number
+            R(a+1).asNumber();
+            R(a+2).asNumber();
+            R(a) = PomeValue(R(a).asNumber() - R(a+2).asNumber());
             ip += sbx;
             DISPATCH();
         }
@@ -1954,54 +1968,56 @@ namespace Pome {
             case OpCode::TFORCALL:
             #endif
             {
-                PomeValue iterObj = R[b];
-                if (iterObj.isInstance() && iterObj.asInstance()->klass->findMethod("next")) {
-                    PomeInstance* instance = iterObj.asInstance();
-                    PomeFunction* nextMethod = instance->klass->findMethod("next");
-                    SAVE_FRAME();
-                    if (frameCount >= 8192) runtimeError("Stack overflow");
-                    CallFrame* nextFrame = &frames[frameCount++];
-                    nextFrame->function = nextMethod;
-                    nextFrame->module = nextMethod->module;
-                    nextFrame->chunk = nextMethod->chunk.get();
-                    nextFrame->ip = nextMethod->chunk->code.data();
-                    nextFrame->base = frameBase + a + 2; 
-                    nextFrame->destReg = a;
-                    stack[nextFrame->base] = PomeValue(nextMethod);
-                    stack[nextFrame->base + 1] = iterObj;
-                    stack[nextFrame->base + 2] = R[b + 1]; 
-                    REFRESH_FRAME();
-                    DISPATCH();
+                PomeValue iterObj = R(b);
+                if (iterObj.isList()) {
+                    PomeList* list = iterObj.asList();
+                    int size = list->isUnboxed() ? (int)list->unboxedCount : (int)list->elements.size();
+                    PomeValue state = R(b + 1);
+                    int idx = state.isNil() ? 0 : (int)state.asNumber();
+                    if (idx < size) {
+                        if (list->listType == ListType::DOUBLE) R(a) = PomeValue(list->asDouble()[idx]);
+                        else if (list->listType == ListType::INT32) R(a) = PomeValue((double)list->asInt32()[idx]);
+                        else R(a) = list->elements[idx];
+                        R(a + 1) = PomeValue((double)idx);
+                        R(b + 1) = PomeValue((double)(idx + 1));
+                    } else {
+                        R(a) = PomeValue();
+                    }
                 } else if (iterObj.isTable()) {
                     PomeTable* table = iterObj.asTable();
                     std::vector<PomeValue> sortedKeys = table->getSortedKeys();
-                    PomeValue state = R[b + 1];
+                    PomeValue state = R(b + 1);
                     int idx = state.isNil() ? 0 : (int)state.asNumber();
                     if (idx < (int)sortedKeys.size()) {
                         PomeValue key = sortedKeys[idx];
-                        R[a] = key;
-                        R[a + 1] = table->get(key);
-                        R[b + 1] = PomeValue((double)(idx + 1));
+                        R(a) = key;
+                        R(a + 1) = table->get(key);
+                        R(b + 1) = PomeValue((double)(idx + 1));
                     } else {
-                        R[a] = PomeValue();
+                        R(a) = PomeValue();
                     }
-                } else if (iterObj.isList()) {
-                    PomeList* list = iterObj.asList();
-                    int size = list->isUnboxed() ? (int)list->unboxedCount : (int)list->elements.size();
-                    PomeValue lastKey = R[b + 1];
-                    int nextIdx = lastKey.isNil() ? 0 : (int)lastKey.asNumber() + 1;
-                    if (nextIdx >= 0 && nextIdx < size) {
-                        if (list->listType == ListType::DOUBLE) {
-                            R[a] = PomeValue(list->asDouble()[nextIdx]); 
-                        } else if (list->listType == ListType::INT32) {
-                            R[a] = PomeValue((double)list->asInt32()[nextIdx]);
-                        } else {
-                            R[a] = list->elements[nextIdx];               // Element
-                        }
-                        R[a + 1] = PomeValue((double)nextIdx);           // Index (secondary)
-                        R[b + 1] = PomeValue((double)nextIdx);           // Update state
-                    } else R[a] = PomeValue();
-                } else R[a] = PomeValue();
+                } else if (iterObj.isInstance()) {
+                    PomeInstance* instance = iterObj.asInstance();
+                    PomeFunction* nextMethod = instance->klass->findMethod("next");
+                    if (nextMethod) {
+                        SAVE_FRAME();
+                        if (frameCount >= 8192) runtimeError("Stack overflow");
+                        CallFrame* nf = &frames[frameCount++];
+                        nf->function = nextMethod;
+                        nf->module = nextMethod->module;
+                        nf->chunk = nextMethod->chunk.get();
+                        nf->ip = nextMethod->chunk->code.data();
+                        nf->base = stackTop;
+                        nf->destReg = a;
+                        stack.at(nf->base) = PomeValue(nextMethod);
+                        stack.at(nf->base + 1) = iterObj;
+                        stack.at(nf->base + 2) = R(b + 1);
+                        REFRESH_FRAME();
+                        DISPATCH();
+                    } else R(a) = PomeValue();
+                } else {
+                    R(a) = PomeValue();
+                }
             }
             DISPATCH();
         }
@@ -2011,7 +2027,7 @@ namespace Pome {
             case OpCode::GETFIELD:
             #endif
             {
-                PomeValue obj = R[b];
+                PomeValue obj = R(b);
                 PomeValue key = K[c];
                 if (obj.isInstance()) {
                     PomeInstance* inst = obj.asInstance();
@@ -2020,29 +2036,35 @@ namespace Pome {
                         PomeFunction* method = inst->klass->findMethod(key.asString());
                         if (method) res = PomeValue(method);
                     }
-                    R[a] = res;
+                    R(a) = res;
                 } else if (obj.isTable()) {
-                    R[a] = obj.asTable()->get(key);
+                    R(a) = obj.asTable()->get(key);
                 } else if (obj.isModule()) {
                     PomeModule* mod = obj.asModule();
                     auto it = mod->exports.find(key);
                     if (it != mod->exports.end()) {
-                        R[a] = it->second;
+                        R(a) = it->second;
                     } else {
                         auto it2 = mod->variables.find(key);
-                        if (it2 != mod->variables.end()) R[a] = it2->second;
-                        else R[a] = PomeValue();
+                        if (it2 != mod->variables.end()) R(a) = it2->second;
+                        else R(a) = PomeValue();
                     }
                 } else if (obj.isList()) {
                     if (key.isString() && key.asString() == "len") {
-                        R[a] = PomeValue((double)(obj.asList()->isUnboxed() ? obj.asList()->unboxedCount : obj.asList()->elements.size()));
-                    } else R[a] = PomeValue();
+                        R(a) = PomeValue((double)(obj.asList()->isUnboxed() ? obj.asList()->unboxedCount : obj.asList()->elements.size()));
+                    } else R(a) = PomeValue();
                 } else if (obj.isString()) {
                     if (key.isString() && key.asString() == "len") {
-                        R[a] = PomeValue((double)obj.asString().length());
-                    } else R[a] = PomeValue();
+                        R(a) = PomeValue((double)obj.asString().length());
+                    } else R(a) = PomeValue();
                 } else {
-                    R[a] = PomeValue(); 
+                    SAVE_FRAME();
+                    if (obj.isNil()) {
+                        runtimeError("Property access on nil.");
+                    } else {
+                        runtimeError("Only instances, tables, modules, lists, and strings have properties.");
+                    }
+                    return PomeValue();
                 }
             }
             DISPATCH();
@@ -2053,9 +2075,9 @@ namespace Pome {
             case OpCode::SETFIELD:
             #endif
             {
-                PomeValue obj = R[a];
+                PomeValue obj = R(a);
                 PomeValue key = K[c];
-                PomeValue val = R[b];
+                PomeValue val = R(b);
                 if (obj.isInstance()) {
                     PomeInstance* inst = obj.asInstance();
                     int index = inst->shape->getIndex(key);
@@ -2091,8 +2113,8 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::TFORLOOP:
             #endif
-            if (!R[a + 2].isNil()) {
-                R[a + 1] = R[a + 2]; 
+            if (!R(a + 2).isNil()) {
+                R(a + 1) = R(a + 2); 
                 ip += sbx; 
             }
             DISPATCH();
@@ -2151,7 +2173,7 @@ namespace Pome {
                     currentTable->set(gc, PomeValue(gc.allocate<PomeString>(remaining)), mod);
                 }
 
-                R[a] = mod; 
+                R(a) = mod; 
             }
             DISPATCH();
         }
@@ -2161,7 +2183,7 @@ namespace Pome {
             case OpCode::EXPORT:
             #endif
             if (currentModule) {
-                PomeValue val = R[a];
+                PomeValue val = R(a);
                 gc.rcWriteBarrier(&currentModule->exports[K[bx]], val);
                 gc.writeBarrier(currentModule, val);
             }
@@ -2173,8 +2195,8 @@ namespace Pome {
             case OpCode::INHERIT:
             #endif
             {
-                PomeValue classVal = R[a];
-                PomeValue superVal = R[b];
+                PomeValue classVal = R(a);
+                PomeValue superVal = R(b);
                 if (!classVal.isClass()) {
                     SAVE_FRAME();
                     runtimeError("Inheritance target must be a class.");
@@ -2202,7 +2224,7 @@ namespace Pome {
                     PomeClass* super = currentFrame->function->klass->superclass;
                     PomeFunction* method = super->findMethod(methodName.asString());
                     if (method) {
-                        R[a] = PomeValue(method);
+                        R(a) = PomeValue(method);
                     } else {
                         SAVE_FRAME();
                         runtimeError("Superclass '" + super->name + "' has no method '" + methodName.asString() + "'");
@@ -2222,7 +2244,7 @@ namespace Pome {
             case OpCode::GETITER:
             #endif
             {
-                PomeValue obj = R[b];
+                PomeValue obj = R(b);
                 if (obj.isInstance()) {
                     PomeInstance* instance = obj.asInstance();
                     PomeFunction* iterMethod = instance->klass->findMethod("iterator");
@@ -2234,29 +2256,28 @@ namespace Pome {
                         nextFrame->module = iterMethod->module;
                         nextFrame->chunk = iterMethod->chunk.get();
                         nextFrame->ip = iterMethod->chunk->code.data();
-                        nextFrame->base = frameBase + a + 2;
+                        nextFrame->base = stackTop;
                         nextFrame->destReg = a;
-                        stack[nextFrame->base] = PomeValue(iterMethod);
-                        stack[nextFrame->base + 1] = obj;
+                        stack.at(nextFrame->base) = PomeValue(iterMethod);
+                        stack.at(nextFrame->base + 1) = obj;
                         REFRESH_FRAME();
                         DISPATCH();
                     } else {
-                        R[a] = obj;
+                        R(a) = obj;
                     }
                 } else {
-                    R[a] = obj;
+                    R(a) = obj;
                 }
             }
             DISPATCH();
         }
-
         LABEL_AND: {
             #ifndef COMPUTED_GOTO
             case OpCode::AND:
             #endif
             {
-                PomeValue v1 = R[b];
-                R[a] = !v1.asBool() ? v1 : R[c];
+                PomeValue v1 = R(b);
+                R(a) = !v1.asBool() ? v1 : R(c);
             }
             DISPATCH();
         }
@@ -2266,8 +2287,8 @@ namespace Pome {
             case OpCode::OR:
             #endif
             {
-                PomeValue v1 = R[b];
-                R[a] = v1.asBool() ? v1 : R[c];
+                PomeValue v1 = R(b);
+                R(a) = v1.asBool() ? v1 : R(c);
             }
             DISPATCH();
         }
@@ -2277,9 +2298,9 @@ namespace Pome {
             case OpCode::SLICE:
             #endif
             {
-                PomeValue obj = R[b];
-                PomeValue startVal = R[c];
-                PomeValue endVal = R[c + 1];
+                PomeValue obj = R(b);
+                PomeValue startVal = R(c);
+                PomeValue endVal = R(c + 1);
                 if (obj.isList()) {
                     PomeList* list = obj.asList();
                     int size = list->isUnboxed() ? (int)list->unboxedCount : (int)list->elements.size();
@@ -2310,7 +2331,7 @@ namespace Pome {
                         }
                         gc.updateSize(res, sizeof(PomeList), sizeof(PomeList) + diff);
                     }
-                    R[a] = PomeValue(res);
+                    R(a) = PomeValue(res);
                 } else if (obj.isString()) {
                     const std::string& str = obj.asString();
                     int s = startVal.isNil() ? 0 : (int)startVal.asNumber();
@@ -2323,7 +2344,7 @@ namespace Pome {
                     } else {
                         res = gc.allocate<PomeString>(str.substr(s, e - s));
                     }
-                    R[a] = PomeValue(res);
+                    R(a) = PomeValue(res);
                 }
             }
             DISPATCH();
@@ -2334,7 +2355,7 @@ namespace Pome {
             #endif
             {
                 for (int i = 0; i < b; ++i) {
-                    std::cout << R[a + i].toString() << (i == b - 1 ? "" : " ");
+                    std::cout << R(a + i).toString() << (i == b - 1 ? "" : " ");
                 }
                 std::cout << std::endl;
             }
@@ -2359,14 +2380,14 @@ namespace Pome {
             #ifndef COMPUTED_GOTO
             case OpCode::THROW:
             #endif
-            throw VMException{R[a]};
+            throw VMException{R(a)};
         }
 
         LABEL_CATCH: {
             #ifndef COMPUTED_GOTO
             case OpCode::CATCH:
             #endif
-            R[a] = pendingException;
+            R(a) = pendingException;
             DISPATCH();
         }
 
@@ -2382,11 +2403,11 @@ namespace Pome {
             case OpCode::AWAIT:
             #endif
             {
-                PomeValue v = R[b];
+                PomeValue v = R(b);
                 if (v.isTask()) {
                     PomeTask* task = (PomeTask*)v.asObject();
                     if (task->isCompleted) {
-                        R[a] = task->result;
+                        R(a) = task->result;
                     } else {
                         ip--; // Re-execute AWAIT
                         SAVE_FRAME();

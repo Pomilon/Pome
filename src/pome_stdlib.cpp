@@ -462,9 +462,11 @@ PomeModule *createThreadingModule(GarbageCollector &gc, ModuleLoader loader)
             registerNative(gc, module, "load", [&gc](const std::vector<PomeValue> &args)
                            {
                 if (args.empty() || !args[0].isString()) return PomeValue(std::monostate{});
-                void* handle = dlopen(args[0].asString().c_str(), RTLD_LAZY);
+                std::string path = args[0].asString();
+                void* handle = dlopen(path.c_str(), RTLD_LAZY);
                 if (!handle) {
-                    std::cerr << "FFI Error: " << dlerror() << std::endl;
+                    const char* err = dlerror();
+                    std::cerr << "FFI Error loading '" << path << "': " << (err ? err : "unknown error") << std::endl;
                     return PomeValue(std::monostate{});
                 }
                 return PomeValue(gc.allocate<PomeNativeObject>(handle, "lib")); 

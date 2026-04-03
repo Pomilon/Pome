@@ -15,7 +15,13 @@ namespace Pome
     PomeValue::PomeValue() : value_(QNAN | TAG_NIL) {}
     PomeValue::PomeValue(std::monostate) : value_(QNAN | TAG_NIL) {}
     PomeValue::PomeValue(bool b) : value_(QNAN | (b ? TAG_TRUE : TAG_FALSE)) {}
-    PomeValue::PomeValue(double d) { std::memcpy(&value_, &d, sizeof(double)); }
+    PomeValue::PomeValue(double d) { 
+        if (std::isnan(d)) {
+            value_ = 0x7ff8000000000000ULL; // Canonical Quiet NaN
+        } else {
+            std::memcpy(&value_, &d, sizeof(double)); 
+        }
+    }
     PomeValue::PomeValue(PomeObject* obj) : value_(SIGN_BIT | QNAN | (uint64_t)(uintptr_t)obj) {}
 
     bool PomeValue::isString() const
@@ -323,7 +329,7 @@ namespace Pome
         for (auto const& [key, val] : backfill) {
             keys.push_back(key);
         }
-        std::sort(keys.begin(), keys.end());
+        // std::sort(keys.begin(), keys.end());
         return keys;
     }
 
