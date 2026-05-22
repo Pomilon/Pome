@@ -105,7 +105,7 @@ namespace Pome {
         
         func->upvalueCount = (uint16_t)innerCompiler.upvalues.size();
 
-        // 3. Emit CLOSURE and SETGLOBAL in CURRENT chunk
+        // 3. Emit CLOSURE in CURRENT chunk
         int reg = allocReg();
         int constIdx = addConstant(PomeValue(func));
         emit(Chunk::makeABx(OpCode::CLOSURE, reg, constIdx), stmt.getLine());
@@ -113,9 +113,14 @@ namespace Pome {
             emit(Chunk::makeABC(uv.isLocal ? OpCode::MOVE : OpCode::GETUPVAL, 0, uv.index, 0), stmt.getLine());
         }
         
-        PomeString* nameStr = gc.allocateString(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
-        int nameIdx = addConstant(PomeValue(nameStr));
-        emit(Chunk::makeABx(OpCode::SETGLOBAL, reg, nameIdx), stmt.getLine());
+        // Nested functions are local; top-level functions are global
+        if (parent == nullptr) {
+            PomeString* nameStr = gc.allocateString(stmt.getName()); RootGuard nameStrGuard(gc, nameStr);
+            int nameIdx = addConstant(PomeValue(nameStr));
+            emit(Chunk::makeABx(OpCode::SETGLOBAL, reg, nameIdx), stmt.getLine());
+        } else {
+            locals.push_back({stmt.getName(), scopeDepth, reg});
+        }
         lastResultReg = reg;
     }
 

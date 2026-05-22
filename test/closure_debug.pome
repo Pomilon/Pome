@@ -1,0 +1,27 @@
+// Check if each call creates a new function object
+fun makeCounter(start) {
+    var count = start;
+    fun inc() {
+        count = count + 1;
+        return count;
+    }
+    return inc;
+}
+
+var c1 = makeCounter(0);
+var c2 = makeCounter(100);
+
+// Check if they're different objects
+print("c1 == c2:", c1 == c2);
+
+// Check the closures' upvalues
+print("c1():", c1());
+print("c1():", c1());
+
+// If c2 shares state, it'll continue from 2, not start at 101
+print("c2():", c2());
+print("c2():", c2());
+
+// Reset and check again
+var c3 = makeCounter(50);
+print("c3():", c3());

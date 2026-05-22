@@ -9,6 +9,8 @@
 #include <chrono> // Added for Time Module
 #include <thread> // Added for Time Module
 #include <optional> // Added for arg parsing helper
+#include <algorithm>
+#include <cctype>
 
 #include <dlfcn.h>
 #include <ffi.h>
@@ -229,6 +231,145 @@ namespace Pome
                 std::string s = args[idx].asString();
                 for (auto &c : s) c = std::toupper(c);
                 return PomeValue(gc.allocateString(s));
+            });
+
+            registerNative(gc, module, "trim", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                auto ws = [](unsigned char c) { return std::isspace(c); };
+                auto front = std::find_if_not(s.begin(), s.end(), ws);
+                auto back = std::find_if_not(s.rbegin(), s.rend(), ws);
+                if (front >= back.base()) return PomeValue(gc.allocateString(""));
+                return PomeValue(gc.allocateString(std::string(front, back.base())));
+            });
+
+            registerNative(gc, module, "ltrim", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                auto ws = [](unsigned char c) { return std::isspace(c); };
+                auto front = std::find_if_not(s.begin(), s.end(), ws);
+                return PomeValue(gc.allocateString(std::string(front, s.end())));
+            });
+
+            registerNative(gc, module, "rtrim", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                auto ws = [](unsigned char c) { return std::isspace(c); };
+                auto back = std::find_if_not(s.rbegin(), s.rend(), ws);
+                return PomeValue(gc.allocateString(std::string(s.begin(), back.base())));
+            });
+
+            registerNative(gc, module, "split", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                std::string delim = " ";
+                if (args.size() >= idx + 2 && args[idx + 1].isString()) delim = args[idx + 1].asString();
+                PomeList* list = gc.allocateList();
+                if (delim.empty()) {
+                    for (char c : s) list->push(gc, PomeValue(gc.allocateString(std::string(1, c))));
+                    gc.writeBarrier((PomeObject*)list, PomeValue());
+                    return PomeValue(list);
+                }
+                size_t start = 0;
+                size_t end = s.find(delim);
+                while (end != std::string::npos) {
+                    list->push(gc, PomeValue(gc.allocateString(s.substr(start, end - start))));
+                    start = end + delim.length();
+                    end = s.find(delim, start);
+                }
+                list->push(gc, PomeValue(gc.allocateString(s.substr(start))));
+                gc.writeBarrier((PomeObject*)list, PomeValue());
+                return PomeValue(list);
+            });
+
+            registerNative(gc, module, "replace", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 3 || !args[idx].isString() || !args[idx + 1].isString() || !args[idx + 2].isString())
+                    return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                std::string from = args[idx + 1].asString();
+                std::string to = args[idx + 2].asString();
+                if (from.empty()) return PomeValue(gc.allocateString(s));
+                std::string result;
+                size_t pos = 0;
+                size_t found;
+                while ((found = s.find(from, pos)) != std::string::npos) {
+                    result.append(s, pos, found - pos);
+                    result.append(to);
+                    pos = found + from.length();
+                }
+                result.append(s, pos, s.length() - pos);
+                return PomeValue(gc.allocateString(result));
+            });
+
+            registerNative(gc, module, "contains", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isString() || !args[idx + 1].isString())
+                    return PomeValue(false);
+                std::string s = args[idx].asString();
+                std::string sub = args[idx + 1].asString();
+                return PomeValue(s.find(sub) != std::string::npos);
+            });
+
+            registerNative(gc, module, "starts_with", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isString() || !args[idx + 1].isString())
+                    return PomeValue(false);
+                std::string s = args[idx].asString();
+                std::string prefix = args[idx + 1].asString();
+                return PomeValue(s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0);
+            });
+
+            registerNative(gc, module, "ends_with", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isString() || !args[idx + 1].isString())
+                    return PomeValue(false);
+                std::string s = args[idx].asString();
+                std::string suffix = args[idx + 1].asString();
+                return PomeValue(s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0);
+            });
+
+            registerNative(gc, module, "len", [](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() <= idx || !args[idx].isString()) return PomeValue(0.0);
+                return PomeValue((double)args[idx].asString().length());
+            });
+
+            registerNative(gc, module, "repeat", [&gc](const std::vector<PomeValue> &args)
+            {
+                size_t idx = 0;
+                if (!args.empty() && args[0].isModule()) idx++;
+                if (args.size() < idx + 2 || !args[idx].isString() || !args[idx + 1].isNumber())
+                    return PomeValue(std::monostate{});
+                std::string s = args[idx].asString();
+                int count = (int)args[idx + 1].asNumber();
+                if (count <= 0) return PomeValue(gc.allocateString(""));
+                std::string result;
+                result.reserve(s.size() * count);
+                for (int i = 0; i < count; ++i) result.append(s);
+                return PomeValue(gc.allocateString(result));
             });
 
             return module;

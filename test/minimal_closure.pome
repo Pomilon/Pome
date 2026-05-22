@@ -1,0 +1,18 @@
+fun makeAdder(x) {
+    fun add(y) {
+        return x + y;
+    }
+    return add;
+}
+
+var add5 = makeAdder(5);
+var add10 = makeAdder(10);
+
+var r1 = add5(3);
+var r2 = add10(3);
+
+print("add5(3) =", r1);
+print("add10(3) =", r2);
+
+if (r1 != 8) print("BUG: expected 8, got", r1);
+if (r2 != 13) print("BUG: expected 13, got", r2);

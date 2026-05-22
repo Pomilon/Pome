@@ -644,6 +644,21 @@ namespace Pome {
                 } else {
                     gc.rcMapSet(globals, key, R(a));
                 }
+                // Invalidate cached GETGLOBAL_CACHE entries for this key
+                for (auto& [offset, meta] : currentFrame->chunk->metadata) {
+                    if (meta.globalCacheValid) {
+                        Instruction instr = currentFrame->chunk->code[offset];
+                        if (Chunk::getOpCode(instr) == OpCode::GETGLOBAL ||
+                            Chunk::getOpCode(instr) == OpCode::GETGLOBAL_CACHE) {
+                            int instrBx = (instr >> Chunk::POS_Bx) & ((1 << Chunk::SIZE_Bx) - 1);
+                            if (instrBx == bx) {
+                                if (meta.globalCache.isObject()) meta.globalCache.decRef(gc);
+                                meta.globalCache = PomeValue();
+                                meta.globalCacheValid = false;
+                            }
+                        }
+                    }
+                }
             }
             DISPATCH();
         }

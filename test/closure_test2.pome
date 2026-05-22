@@ -1,0 +1,41 @@
+// Test 1: nested function declaration closure
+fun makeAdder1(x) {
+    fun add(y) {
+        return x + y;
+    }
+    return add;
+}
+
+// Test 2: lambda/function expression closure  
+fun makeAdder2(x) {
+    return fun(y) { return x + y; };
+}
+
+print("--- Test 1: nested fun decl ---");
+var a1 = makeAdder1(5);
+var a2 = makeAdder1(10);
+print("a1(3):", a1(3)); // expected 8
+print("a2(3):", a2(3)); // expected 13
+
+print("--- Test 2: lambda expression ---");
+var b1 = makeAdder2(5);
+var b2 = makeAdder2(10);
+print("b1(3):", b1(3)); // expected 8
+print("b2(3):", b2(3)); // expected 13
+
+// Test 3: direct counter
+fun makeCounter(start) {
+    var count = start;
+    fun inc() {
+        count = count + 1;
+        return count;
+    }
+    return inc;
+}
+
+print("--- Test 3: counter ---");
+var c1 = makeCounter(0);
+var c2 = makeCounter(100);
+print("c1():", c1()); print("c2():", c2());
+print("c1():", c1()); print("c2():", c2());
+print("c1():", c1()); print("c2():", c2());

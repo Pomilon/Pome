@@ -1,0 +1,81 @@
+import string;
+import list;
+
+// trim
+var s = string.trim("  hello  ");
+print("trim basic:", s);
+
+s = string.trim("hello");
+print("trim noop:", s);
+
+s = string.trim("  ");
+print("trim all whitespace: '" + s + "'");
+
+// ltrim
+s = string.ltrim("  hello  ");
+print("ltrim basic: '" + s + "'");
+
+// rtrim
+s = string.rtrim("  hello  ");
+print("rtrim basic: '" + s + "'");
+
+// split
+var parts = string.split("a,b,c", ",");
+print("split count:", list.len(parts));
+print("split[0]:", parts[0]);
+print("split[1]:", parts[1]);
+print("split[2]:", parts[2]);
+
+parts = string.split("hello world");
+print("split default count:", list.len(parts));
+print("split default[0]:", parts[0]);
+print("split default[1]:", parts[1]);
+
+parts = string.split("a", ",");
+print("split no delim count:", list.len(parts));
+
+parts = string.split("", ",");
+print("split empty count:", list.len(parts));
+
+// replace
+s = string.replace("hello world", "world", "there");
+print("replace basic:", s);
+
+s = string.replace("aaa", "a", "bb");
+print("replace all:", s);
+
+s = string.replace("hello", "x", "y");
+print("replace no match:", s);
+
+s = string.replace("aa", "", "x");
+print("replace empty from:", s);
+
+// contains
+print("contains true:", string.contains("hello world", "world"));
+print("contains false:", string.contains("hello world", "xyz"));
+print("contains empty:", string.contains("hello", ""));
+
+// starts_with
+print("starts_with true:", string.starts_with("hello world", "hello"));
+print("starts_with false:", string.starts_with("hello world", "world"));
+print("starts_with empty:", string.starts_with("hello", ""));
+
+// ends_with
+print("ends_with true:", string.ends_with("hello world", "world"));
+print("ends_with false:", string.ends_with("hello world", "hello"));
+print("ends_with empty:", string.ends_with("hello", ""));
+
+// repeat
+s = string.repeat("ab", 3);
+print("repeat basic:", s);
+
+s = string.repeat("x", 0);
+print("repeat zero: '" + s + "'");
+
+s = string.repeat("x", 1);
+print("repeat one:", s);
+
+s = string.repeat("abc", 2);
+print("repeat multiple:", s);
+
+print("All string module tests done!");

@@ -1,0 +1,196 @@
+import list;
+import string;
+
+// --- GC Stress: Allocate many objects ---
+print("--- GC Stress ---");
+for (var i = 0; i < 10000; i = i + 1) {
+    var x = {a: 1, b: "hello", c: [1, 2, 3]};
+    var y = [x, x, x, x, x];
+    var z = "iteration " + (i);
+    if (i % 1000 == 0) print("gc stress at", i);
+}
+print("GC stress done");
+
+// --- Deep Recursion ---
+print("--- Deep Recursion ---");
+fun recurse(n) {
+    if (n <= 0) return "done";
+    return recurse(n - 1);
+}
+var r = recurse(500);
+print("deep recursion 500:", r);
+
+// --- Deep Recursion (stack test) ---
+fun deep(n) {
+    if (n <= 0) return 0;
+    return 1 + deep(n - 1);
+}
+r = deep(1000);
+print("deep recursion 1000:", r);
+
+// --- Large String Ops ---
+print("--- Large String Ops ---");
+var big = "";
+for (var i = 0; i < 1000; i = i + 1) {
+    big = big + "hello world ";
+    if (i % 200 == 0) print("string build at", i);
+}
+print("big string len:", string.len(big));
+
+var trimmed = string.trim(big);
+print("trimmed big:", trimmed == big);
+
+var splitBig = string.split(big, " ");
+print("split big count:", list.len(splitBig));
+
+// --- Closure Chains ---
+print("--- Closure Chains ---");
+fun makeCounter(n) {
+    fun count() {
+        n = n + 1;
+        return n;
+    }
+    return count;
+}
+var c = makeCounter(0);
+for (var i = 0; i < 100; i = i + 1) {
+    var v = c();
+    if (i % 20 == 0) print("counter at", v);
+}
+print("final counter:", c());
+
+// --- Nested closures ---
+fun makeAdder(x) {
+    fun add(y) {
+        return x + y;
+    }
+    return add;
+}
+var add5 = makeAdder(5);
+var add10 = makeAdder(10);
+print("add5(3):", add5(3));
+print("add10(3):", add10(3));
+
+// --- Large Table Operations ---
+print("--- Large Table ---");
+var t = {};
+for (var i = 0; i < 500; i = i + 1) {
+    t["key" + i] = i;
+}
+print("table built with 500 entries");
+
+// Read them back
+for (var i = 0; i < 500; i = i + 1) {
+    var val = t["key" + i];
+    if (val != i) print("MISMATCH at", i, "got", val);
+}
+print("table readback done");
+
+// --- Deep Nesting ---
+print("--- Deep Nesting ---");
+var deepList = [1, 2, 3];
+for (var i = 0; i < 100; i = i + 1) {
+    deepList = [deepList, deepList, deepList];
+}
+print("deep list built");
+
+// --- Ternary operator edge cases ---
+print("--- Ternary ---");
+var t1 = true ? 1 : 0;
+print("ternary true:", t1);
+var t2 = false ? 1 : 0;
+print("ternary false:", t2);
+
+// Nested ternary
+var t3 = true ? (false ? 1 : 2) : 3;
+print("nested ternary:", t3);
+
+// --- Boolean and nil edge cases ---
+print("--- Edge Cases ---");
+fun isNil(x) { return x == nil; }
+print("nil check:", isNil(nil));
+
+print("not true:", !true);
+print("not false:", !false);
+print("not nil:", !nil);
+print("not 0:", !0);
+print("not 1:", !1);
+print("not empty string:", !"");
+
+// --- Unary operators ---
+var neg = -42;
+print("negate:", neg);
+var negNeg = -(-5);
+print("double negate:", negNeg);
+
+// --- Compound assignments ---
+var a = 10;
+a = a + 5;
+print("compound +:", a);
+a = a - 3;
+print("compound -:", a);
+a = a * 2;
+print("compound *:", a);
+a = a / 3;
+print("compound /:", a);
+
+// --- For loop edge cases ---
+print("--- For Loops ---");
+for (var i = 0; i < 0; i = i + 1) {
+    print("should not print");
+}
+print("zero-iteration loop done");
+
+for (var i = 0; i < 1; i = i + 1) {
+    print("single-iteration loop done");
+}
+
+// --- While loop ---
+var count = 0;
+while (count < 5) {
+    count = count + 1;
+}
+print("while loop count:", count);
+
+// --- Break ---
+var found = false;
+for (var i = 0; i < 100; i = i + 1) {
+    if (i == 5) {
+        found = true;
+        break;
+    }
+}
+print("break worked:", found);
+
+// --- Continue ---
+var evens = 0;
+for (var i = 0; i < 10; i = i + 1) {
+    if (i % 2 != 0) continue;
+    evens = evens + 1;
+}
+print("continue count (evens):", evens);
+
+// --- Large Fibonacci (recursive, tests stack and calls) ---
+fun fib(n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+var fib10 = fib(10);
+print("fib(10):", fib10);
+
+// --- String.len ---
+print("string.len test:", string.len("hello"));
+
+// --- Large for-in loop ---
+print("--- For-In Loop ---");
+var items = [];
+for (var i = 0; i < 100; i = i + 1) {
+    list.push(items, i);
+}
+var sum = 0;
+for (var item in items) {
+    sum = sum + item;
+}
+print("sum of 0-99:", sum);
+
+print("\nAll stress tests completed!");

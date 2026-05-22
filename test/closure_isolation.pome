@@ -1,0 +1,39 @@
+// Test: closure state isolation
+fun makeAdder(x) {
+    fun add(y) {
+        return x + y;
+    }
+    return add;
+}
+
+var add5 = makeAdder(5);
+var add10 = makeAdder(10);
+
+print("add5(3):", add5(3));   // expected: 8
+print("add10(3):", add10(3));   // expected: 13
+
+if (add5(3) != 8) print("BUG: add5(3) should be 8, got", add5(3));
+if (add10(3) != 13) print("BUG: add10(3) should be 13, got", add10(3));
+
+// Also test: counter isolation
+fun makeCounter(start) {
+    var count = start;
+    fun inc() {
+        count = count + 1;
+        return count;
+    }
+    return inc;
+}
+
+var c1 = makeCounter(0);
+var c2 = makeCounter(100);
+
+print("c1():", c1());  // expected: 1
+print("c2():", c2());  // expected: 101
+print("c1():", c1());  // expected: 2
+print("c2():", c2());  // expected: 102
+
+if (c1() != 3) print("BUG: c1 should be 3, got", c1());
+if (c2() != 103) print("BUG: c2 should be 103, got", c2());
+
+print("closure isolation test done");
